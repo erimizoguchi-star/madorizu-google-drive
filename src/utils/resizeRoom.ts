@@ -1,4 +1,5 @@
-import type { Floor, Point } from '../types/floorPlan'
+import type { Door, Fixture, Floor, Point, Stair, Wall, Window } from '../types/floorPlan'
+import { syncFloorWalls } from './ensureExteriorWalls'
 import {
   isOnHorizontalEdge,
   isOnVerticalEdge,
@@ -12,44 +13,10 @@ import {
 } from './roomGeometry'
 
 const EPS = 0.05
+const MIN_SEGMENT_SVG = 0.5
 
 function snap(n: number): number {
   return Math.round(n * 1000) / 1000
-}
-
-function movePointOnEdge(
-  p: Point,
-  edge: RectEdge,
-  oldCoord: number,
-  newCoord: number,
-  seg: AxisAlignedRect
-): Point | null {
-  const { minX, minY, maxX, maxY } = seg
-  switch (edge) {
-    case 'east':
-      if (isOnVerticalEdge(p, oldCoord, minY, maxY)) return { x: snap(newCoord), y: snap(p.y) }
-      break
-    case 'west':
-      if (isOnVerticalEdge(p, oldCoord, minY, maxY)) return { x: snap(newCoord), y: snap(p.y) }
-      break
-    case 'south':
-      if (isOnHorizontalEdge(p, oldCoord, minX, maxX)) return { x: snap(p.x), y: snap(newCoord) }
-      break
-    case 'north':
-      if (isOnHorizontalEdge(p, oldCoord, minX, maxX)) return { x: snap(p.x), y: snap(newCoord) }
-      break
-  }
-  return null
-}
-
-function mapPoint(
-  p: Point,
-  edge: RectEdge,
-  oldCoord: number,
-  newCoord: number,
-  seg: AxisAlignedRect
-): Point {
-  return movePointOnEdge(p, edge, oldCoord, newCoord, seg) ?? p
 }
 
 function validateRect(rect: AxisAlignedRect): string | null {
@@ -58,9 +25,199 @@ function validateRect(rect: AxisAlignedRect): string | null {
   return null
 }
 
+type EdgeMove = {
+  edge: RectEdge
+  horizontal: boolean
+  oldCoord: number
+  newCoord: number
+  spanLo: number
+  spanHi: number
+}
+
+function buildEdgeMove(
+  edge: RectEdge,
+  rect: AxisAlignedRect,
+  oldCoord: number,
+  newCoord: number
+): EdgeMove {
+  const horizontal = edge === 'north' || edge === 'south'
+  return {
+    edge,
+    horizontal,
+    oldCoord,
+    newCoord,
+    spanLo: horizontal ? rect.minX : rect.minY,
+    spanHi: horizontal ? rect.maxX : rect.maxY,
+  }
+}
+
+function overlap1D(a1: number, a2: number, b1: number, b2: number): { lo: number; hi: number } | null {
+  const lo = Math.max(Math.min(a1, a2), Math.min(b1, b2))
+  const hi = Math.min(Math.max(a1, a2), Math.max(b1, b2))
+  if (hi - lo < EPS) return null
+  return { lo: snap(lo), hi: snap(hi) }
+}
+
+function isHorizontalWall(wall: Wall): boolean {
+  return Math.abs(wall.start.y - wall.end.y) < EPS
+}
+
+function isVerticalWall(wall: Wall): boolean {
+  return Math.abs(wall.start.x - wall.end.x) < EPS
+}
+
+function isPointOnMovingEdge(p: Point, move: EdgeMove): boolean {
+  if (move.horizontal) {
+    return isOnHorizontalEdge(p, move.oldCoord, move.spanLo, move.spanHi)
+  }
+  return isOnVerticalEdge(p, move.oldCoord, move.spanLo, move.spanHi)
+}
+
+function movePointIfOnEdge(p: Point, move: EdgeMove): Point {
+  if (!isPointOnMovingEdge(p, move)) return p
+  if (move.horizontal) return { x: snap(p.x), y: snap(move.newCoord) }
+  return { x: snap(move.newCoord), y: snap(p.y) }
+}
+
+function splitAndMoveWall(wall: Wall, move: EdgeMove, nextId: () => string): Wall[] {
+  if (move.horizontal) {
+    if (!isHorizontalWall(wall)) return [wall]
+    const y = snap(wall.start.y)
+    if (Math.abs(y - move.oldCoord) > EPS) return [wall]
+
+    const wx1 = Math.min(wall.start.x, wall.end.x)
+    const wx2 = Math.max(wall.start.x, wall.end.x)
+    const overlap = overlap1D(wx1, wx2, move.spanLo, move.spanHi)
+    if (!overlap) return [wall]
+
+    const result: Wall[] = []
+    if (overlap.lo - wx1 >= MIN_SEGMENT_SVG) {
+      result.push({
+        ...wall,
+        id: nextId(),
+        start: { x: wx1, y },
+        end: { x: overlap.lo, y },
+      })
+    }
+    if (overlap.hi - overlap.lo >= MIN_SEGMENT_SVG) {
+      result.push({
+        ...wall,
+        id: nextId(),
+        start: { x: overlap.lo, y: move.newCoord },
+        end: { x: overlap.hi, y: move.newCoord },
+      })
+    }
+    if (wx2 - overlap.hi >= MIN_SEGMENT_SVG) {
+      result.push({
+        ...wall,
+        id: nextId(),
+        start: { x: overlap.hi, y },
+        end: { x: wx2, y },
+      })
+    }
+    return result.length > 0 ? result : [wall]
+  }
+
+  if (!isVerticalWall(wall)) return [wall]
+  const x = snap(wall.start.x)
+  if (Math.abs(x - move.oldCoord) > EPS) return [wall]
+
+  const wy1 = Math.min(wall.start.y, wall.end.y)
+  const wy2 = Math.max(wall.start.y, wall.end.y)
+  const overlap = overlap1D(wy1, wy2, move.spanLo, move.spanHi)
+  if (!overlap) return [wall]
+
+  const result: Wall[] = []
+  if (overlap.lo - wy1 >= MIN_SEGMENT_SVG) {
+    result.push({
+      ...wall,
+      id: nextId(),
+      start: { x, y: wy1 },
+      end: { x, y: overlap.lo },
+    })
+  }
+  if (overlap.hi - overlap.lo >= MIN_SEGMENT_SVG) {
+    result.push({
+      ...wall,
+      id: nextId(),
+      start: { x: move.newCoord, y: overlap.lo },
+      end: { x: move.newCoord, y: overlap.hi },
+    })
+  }
+  if (wy2 - overlap.hi >= MIN_SEGMENT_SVG) {
+    result.push({
+      ...wall,
+      id: nextId(),
+      start: { x, y: overlap.hi },
+      end: { x, y: wy2 },
+    })
+  }
+  return result.length > 0 ? result : [wall]
+}
+
+function adjustPerpendicularWallEndpoints(walls: Wall[], move: EdgeMove): Wall[] {
+  return walls.map((wall) => {
+    let start = wall.start
+    let end = wall.end
+
+    if (move.horizontal) {
+      if (!isVerticalWall(wall)) return wall
+      const x = snap(wall.start.x)
+      if (x < move.spanLo - EPS || x > move.spanHi + EPS) return wall
+      start = movePointIfOnEdge(start, move)
+      end = movePointIfOnEdge(end, move)
+    } else {
+      if (!isHorizontalWall(wall)) return wall
+      const y = snap(wall.start.y)
+      if (y < move.spanLo - EPS || y > move.spanHi + EPS) return wall
+      start = movePointIfOnEdge(start, move)
+      end = movePointIfOnEdge(end, move)
+    }
+
+    if (start === wall.start && end === wall.end) return wall
+    return { ...wall, start, end }
+  })
+}
+
+function adjustWallsForEdge(walls: Wall[], move: EdgeMove): Wall[] {
+  let counter = 0
+  const nextId = () => `w-resize-${Date.now()}-${counter++}`
+  const split = walls.flatMap((wall) => splitAndMoveWall(wall, move, nextId))
+  return adjustPerpendicularWallEndpoints(split, move)
+}
+
+function adjustDoorsForEdge(doors: Door[], move: EdgeMove): Door[] {
+  return doors.map((door) => ({
+    ...door,
+    position: movePointIfOnEdge(door.position, move),
+  }))
+}
+
+function adjustWindowsForEdge(windows: Window[], move: EdgeMove): Window[] {
+  return windows.map((win) => ({
+    ...win,
+    start: movePointIfOnEdge(win.start, move),
+    end: movePointIfOnEdge(win.end, move),
+  }))
+}
+
+function adjustFixturesForEdge(fixtures: Fixture[], move: EdgeMove): Fixture[] {
+  return fixtures.map((fixture) => ({
+    ...fixture,
+    position: movePointIfOnEdge(fixture.position, move),
+  }))
+}
+
+function adjustStairsForEdge(stairs: Stair[], move: EdgeMove): Stair[] {
+  return stairs.map((stair) => ({
+    ...stair,
+    polygon: stair.polygon.map((p) => movePointIfOnEdge(p, move)),
+  }))
+}
+
 /**
- * 選択部屋のポリゴンと、その部屋の辺上にある壁・扉・窓・設備を更新する。
- * 隣接部屋のポリゴンは変更しない。
+ * 選択部屋のポリゴンと、その部屋の辺に重なる壁区間のみ直交に移動する。
+ * 長い共有壁は部屋の範囲で分割し、斜めにならないようにする。
  */
 export function resizeRoomEdgeOnFloor(
   floor: Floor,
@@ -90,19 +247,19 @@ export function resizeRoomEdgeOnFloor(
 
   if (Math.abs(snapped - oldCoord) < EPS) return floor
 
-  const move = (p: Point) => mapPoint(p, edge, oldCoord, snapped, rect)
+  const move = buildEdgeMove(edge, rect, oldCoord, snapped)
 
-  return {
+  return syncFloorWalls({
     ...floor,
     rooms: floor.rooms.map((r) =>
       r.id === roomId ? { ...r, polygon: rectToPolygon(nextRect) } : r
     ),
-    walls: floor.walls.map((w) => ({ ...w, start: move(w.start), end: move(w.end) })),
-    doors: floor.doors.map((d) => ({ ...d, position: move(d.position) })),
-    windows: floor.windows.map((w) => ({ ...w, start: move(w.start), end: move(w.end) })),
-    fixtures: floor.fixtures.map((f) => ({ ...f, position: move(f.position) })),
-    stairs: floor.stairs.map((s) => ({ ...s, polygon: s.polygon.map(move) })),
-  }
+    walls: adjustWallsForEdge(floor.walls, move),
+    doors: adjustDoorsForEdge(floor.doors, move),
+    windows: adjustWindowsForEdge(floor.windows, move),
+    fixtures: adjustFixturesForEdge(floor.fixtures, move),
+    stairs: adjustStairsForEdge(floor.stairs, move),
+  })
 }
 
 export function resizeRoomDimensionsOnFloor(

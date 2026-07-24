@@ -21,7 +21,7 @@ export interface Point {
 }
 
 /** 部屋の塗り模様 */
-export type RoomFillPattern = 'none' | 'hatch' | 'grid' | 'tatami'
+export type RoomFillPattern = 'none' | 'hatch' | 'grid' | 'tatami' | 'wood' | 'tile'
 
 export interface Room {
   id: string
@@ -52,6 +52,11 @@ export interface Room {
   fillColor?: string
   /** 模様の上書き（省略時は部屋タイプのデフォルト） */
   fillPattern?: RoomFillPattern
+  /**
+   * 各頂点の角アール（mm）。polygon と同じ順番・長さ。
+   * 0 / 省略は直角。凸角・凹角どちらも可。
+   */
+  cornerRadiiMm?: number[]
 }
 
 export interface Wall {
@@ -62,23 +67,57 @@ export interface Wall {
   exterior?: boolean
 }
 
+/** 片開き / 両開き / 片引き / 引き違い / 折れ戸 / 両折れ / 引き込み / 親子戸 / 開口 */
+export type DoorKind =
+  | 'swing'
+  | 'double_swing'
+  | 'sliding'
+  | 'double_sliding'
+  | 'folding'
+  | 'double_folding'
+  | 'pocket'
+  | 'parent_child'
+  | 'opening'
+
 export interface Door {
   id: string
   position: Point
   width: number
-  /** 壁に沿った角度（度） */
+  /** 壁に沿った角度（度）— 閉じたときの戸の向き */
   angle: number
-  /** 開き方向: 1 = 反時計回り, -1 = 時計回り */
+  /** 開閉方向: 1 = 左開き（反時計回り）, -1 = 右開き（時計回り） */
   swing: 1 | -1
+  /** 省略時は片開き戸 */
+  kind?: DoorKind
 }
+
+/** 引き違い / 嵌め殺し / 開き / 両開き / すべり出し / 掃き出し / 高窓 */
+export type WindowKind =
+  | 'sliding'
+  | 'fixed'
+  | 'casement'
+  | 'double_casement'
+  | 'awning'
+  | 'floor'
+  | 'high'
 
 export interface Window {
   id: string
   start: Point
   end: Point
+  /** 省略時は引き違い窓 */
+  kind?: WindowKind
 }
 
-export type FixtureType = 'bathtub' | 'toilet' | 'sink' | 'stove' | 'kitchen_sink'
+export type FixtureType =
+  | 'bathtub'
+  | 'toilet'
+  | 'sink'
+  | 'stove'
+  | 'kitchen_sink'
+  | 'refrigerator'
+  | 'washer'
+  | 'car'
 
 export interface Fixture {
   id: string
@@ -89,10 +128,22 @@ export interface Fixture {
   angle?: number
 }
 
+export type StairLayout = 'straight' | 'turn-right' | 'turn-left'
+
+/** 上り方向（SVG座標: y が小さいほど上） */
+export type StairOrientation = 'up' | 'down' | 'left' | 'right'
+
 export interface Stair {
   id: string
   polygon: Point[]
+  /** @deprecated orientation を優先。未設定時の上り/下り表示用 */
   direction: 'up' | 'down'
+  /** 段の形状: 直線 / 右回り / 左回り */
+  layout?: StairLayout
+  /** 上り方向 */
+  orientation?: StairOrientation
+  /** 階段幅 mm（省略時 910） */
+  widthMm?: number
   /** 表示名（省略時は「階段」） */
   name?: string
   showName?: boolean

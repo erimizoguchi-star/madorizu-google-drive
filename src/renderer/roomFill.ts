@@ -4,13 +4,15 @@ import { ROOM_COLORS } from './styles'
 export const ROOM_PATTERN_OPTIONS: { value: RoomFillPattern | ''; label: string }[] = [
   { value: '', label: 'タイプのデフォルト' },
   { value: 'none', label: 'なし（単色）' },
+  { value: 'wood', label: '木目（フローリング）' },
+  { value: 'tile', label: 'タイル' },
   { value: 'grid', label: '格子' },
   { value: 'hatch', label: '斜線' },
   { value: 'tatami', label: '畳目' },
 ]
 
 export function getDefaultFillColor(type: Room['type']): string {
-  return ROOM_COLORS[type].fill
+  return ROOM_COLORS[type]?.fill ?? ROOM_COLORS.other.fill
 }
 
 export function resolveRoomFillColor(room: Room): string {
@@ -19,14 +21,20 @@ export function resolveRoomFillColor(room: Room): string {
 
 export function resolveRoomFillPattern(room: Room): RoomFillPattern {
   if (room.fillPattern !== undefined) return room.fillPattern
+  if (room.type === 'ld') return 'wood'
+  if (room.type === 'hallway' || room.type === 'storage' || room.type === 'void') return 'none'
   if (room.type === 'japanese') return 'tatami'
   if (room.type === 'attic') return 'hatch'
+  if (room.type === 'porch' || room.type === 'entrance') return 'none'
   return 'none'
 }
 
 export function getDefaultFillPattern(type: Room['type']): RoomFillPattern {
+  if (type === 'ld') return 'wood'
+  if (type === 'hallway' || type === 'storage' || type === 'void') return 'none'
   if (type === 'japanese') return 'tatami'
   if (type === 'attic') return 'hatch'
+  if (type === 'porch' || type === 'entrance') return 'none'
   return 'none'
 }
 

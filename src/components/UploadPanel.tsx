@@ -33,6 +33,7 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [preparedInput, setPreparedInput] = useState<PreparedFloorPlanInput | null>(null)
   const [selectedPage, setSelectedPage] = useState(1)
+  const [highQuality, setHighQuality] = useState(false)
 
   const revokePreview = useCallback((url: string | null) => {
     if (url?.startsWith('blob:')) {
@@ -74,6 +75,7 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
           mode,
           apiKey: useServerKey ? undefined : normalized || undefined,
           useServerKey,
+          quality: highQuality ? 'high' : 'standard',
         })
         result.sourcePreviewUrl = input.previewUrl
         result.sourceFileName = sourceName
@@ -90,7 +92,7 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
         setAnalyzing(false)
       }
     },
-    [mode, apiKey, serverHasKey, onResult, onError]
+    [mode, apiKey, serverHasKey, highQuality, onResult, onError]
   )
 
   const handleVerifyKey = useCallback(async () => {
@@ -273,6 +275,18 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
               <li><code>npm run dev</code> を再起動</li>
             </ol>
           </details>
+          <label className="quality-toggle">
+            <input
+              type="checkbox"
+              checked={highQuality}
+              disabled={busy}
+              onChange={(e) => setHighQuality(e.target.checked)}
+            />
+            高精度解析（Proモデル・高解像度・時間とAPIコスト増）
+          </label>
+          <p className="quality-hint">
+            精度を上げるコツ: 寸法線が読める図面、余白の少ないクロップ、PDFは1階ずつ。生成後は編集モードで微調整してください。
+          </p>
         </>
       )}
 
@@ -339,6 +353,13 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
       >
         {analyzing ? '生成中...' : mode === 'demo' ? 'サンプル間取図を表示' : '間取図を生成'}
       </button>
+      {analyzing && mode === 'gemini' && (
+        <p className="analyzing-hint">
+          {highQuality
+            ? '高精度AI解析中です。2〜5分かかることがあります。そのままお待ちください。'
+            : 'AI解析中です。1〜3分かかることがあります。そのままお待ちください。'}
+        </p>
+      )}
     </div>
   )
 }

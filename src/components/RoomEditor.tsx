@@ -1,6 +1,9 @@
 import { useMemo } from 'react'
 import { ROOM_TYPE_OPTIONS, isAreaJoHiddenByType } from '../constants/roomTypes'
 import { LABEL } from '../renderer/styles'
+import { STAIR_LAYOUT_OPTIONS, STAIR_ORIENTATION_OPTIONS } from '../constants/stairOptions'
+import { STAIR_DEFAULT_WIDTH_MM } from '../utils/resizeStair'
+import { resolveStairLayout, resolveStairOrientation, getStairBounds } from '../renderer/stairGraphics'
 import {
   getDefaultFillColor,
   normalizeHexColor,
@@ -8,36 +11,80 @@ import {
   resolveRoomFillPattern,
   ROOM_PATTERN_OPTIONS,
 } from '../renderer/roomFill'
-import type { FloorPlan, Point, RoomFillPattern } from '../types/floorPlan'
+import type { DoorKind, FloorPlan, Point, RoomFillPattern, StairLayout, StairOrientation, WindowKind } from '../types/floorPlan'
+import {
+  setAllCornerRadiiMm,
+  setCornerRadiusMmAt,
+} from '../utils/cornerFillet'
 import {
   deleteRoom,
+  deleteWall,
+  deleteDoor,
+  deleteWindow,
+  deleteFixture,
   elementRefToKey,
   findRoom,
   findStair,
+  findWall,
+  findDoor,
+  findWindow,
+  findFixture,
   listAllEditableElements,
   parseElementRefKey,
   type SelectedElementRef,
   updateFloorPlanTitle,
   updateRoom,
   updateStair,
+  updateDoor,
+  updateWindow,
+  updateFixture,
+  moveRoom,
   resizeRoomDimensions,
   type SelectOptions,
 } from '../utils/floorPlanEdit'
+import {
+  DOOR_KIND_OPTIONS,
+  DOOR_KINDS_WITH_SWING,
+  DOOR_SWING_OPTIONS,
+  doorKindLabel,
+} from '../constants/doorOptions'
+import {
+  WINDOW_KIND_OPTIONS,
+  windowKindLabel,
+} from '../constants/windowOptions'
+import {
+  FIXTURE_TYPE_OPTIONS,
+  fixtureTypeLabel,
+} from '../constants/fixtureOptions'
+import {
+  addRoomBesideExisting,
+  fixturePlaceKind,
+  isFixturePlaceKind,
+  type PlaceKind,
+} from '../utils/floorPlanAdd'
 import type { LabelLineKind } from '../renderer/roomLabelLayout'
 import { mergeRooms } from '../utils/mergeRooms'
 import {
   getRectDimensionsMm,
   MIN_ROOM_SIZE_MM,
+  mmToSvgUnits,
   parseAxisAlignedRect,
+  svgUnitsToMm,
 } from '../utils/roomGeometry'
 
 interface RoomEditorProps {
   floorPlan: FloorPlan
   selected: SelectedElementRef | null
   mergeRoomIds: { floorId: string; roomIds: string[] } | null
+  placeKind: PlaceKind | null
+  onPlaceKindChange: (kind: PlaceKind | null) => void
   onSelect: (ref: SelectedElementRef | null, options?: SelectOptions) => void
   onMergeRoomIdsChange: (ids: { floorId: string; roomIds: string[] } | null) => void
   onChange: (updater: (prev: FloorPlan) => FloorPlan) => void
+  canUndo?: boolean
+  canRedo?: boolean
+  onUndo?: () => void
+  onRedo?: () => void
 }
 
 function parseOffsetInput(value: string): number | null {
@@ -103,13 +150,23 @@ export function RoomEditor({
   floorPlan,
   selected,
   mergeRoomIds,
+  placeKind,
+  onPlaceKindChange,
   onSelect,
   onMergeRoomIdsChange,
   onChange,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }: RoomEditorProps) {
   const elementList = useMemo(() => listAllEditableElements(floorPlan), [floorPlan])
   const currentRoom = selected?.kind === 'room' ? findRoom(floorPlan, selected) : null
   const currentStair = selected?.kind === 'stair' ? findStair(floorPlan, selected) : null
+  const currentWall = selected?.kind === 'wall' ? findWall(floorPlan, selected) : null
+  const currentDoor = selected?.kind === 'door' ? findDoor(floorPlan, selected) : null
+  const currentWindow = selected?.kind === 'window' ? findWindow(floorPlan, selected) : null
+  const currentFixture = selected?.kind === 'fixture' ? findFixture(floorPlan, selected) : null
 
   const mergeFloorId =
     mergeRoomIds?.floorId ??
@@ -193,6 +250,68 @@ export function RoomEditor({
     onSelect(null)
   }
 
+  const handleDeleteWall = () => {
+    if (!selected || selected.kind !== 'wall' || !currentWall) return
+    const label = currentWall.wall.exterior ? '外壁' : '内壁'
+    if (!confirm(`${label}（${currentWall.wall.id}）を削除しますか？`)) return
+    applyPlan((prev) => deleteWall(prev, selected))
+    onSelect(null)
+  }
+
+  const handleDeleteDoor = () => {
+    if (!selected || selected.kind !== 'door' || !currentDoor) return
+    if (!confirm('この扉を削除しますか？')) return
+    applyPlan((prev) => deleteDoor(prev, selected))
+    onSelect(null)
+  }
+
+  const handleDeleteWindow = () => {
+    if (!selected || selected.kind !== 'window' || !currentWindow) return
+    if (!confirm('この窓を削除しますか？')) return
+    applyPlan((prev) => deleteWindow(prev, selected))
+    onSelect(null)
+  }
+
+  const handleDeleteFixture = () => {
+    if (!selected || selected.kind !== 'fixture' || !currentFixture) return
+    if (!confirm('この設備を削除しますか？')) return
+    applyPlan((prev) => deleteFixture(prev, selected))
+    onSelect(null)
+  }
+
+  const handleQuickAddRoom = () => {
+    const floorId =
+      selected?.kind === 'room'
+        ? selected.floorId
+        : mergeFloorId ?? floorPlan.floors[0]?.id
+    if (!floorId) return
+    const result = addRoomBesideExisting(floorPlan, floorId)
+    if ('error' in result) {
+      alert(result.error)
+      return
+    }
+    onChange(() => result.floorPlan)
+    onSelect({ kind: 'room', floorId, roomId: result.roomId })
+    onPlaceKindChange(null)
+  }
+
+  const handleMoveRoom = (dxMm: number, dyMm: number) => {
+    if (!selected || selected.kind !== 'room') return
+    applyPlan((prev) =>
+      moveRoom(prev, selected, { x: mmToSvgUnits(dxMm), y: mmToSvgUnits(dyMm) })
+    )
+  }
+
+  const handleDoorField = (patch: Parameters<typeof updateDoor>[2]) => {
+    if (!selected || selected.kind !== 'door') return
+    applyPlan((prev) => updateDoor(prev, selected, patch))
+  }
+
+  const handleWindowField = (patch: Parameters<typeof updateWindow>[2]) => {
+    if (!selected || selected.kind !== 'window') return
+    applyPlan((prev) => updateWindow(prev, selected, patch))
+  }
+
   const hideAreaJo =
     currentRoom != null && isAreaJoHiddenByType(currentRoom.room.type)
 
@@ -213,7 +332,84 @@ export function RoomEditor({
   return (
     <div className="room-editor">
       <h3>間取図を編集</h3>
-      <p className="editor-hint">部屋・階段をクリックするか、一覧から選択して編集できます。</p>
+      <p className="editor-hint">
+        「追加」からクリック配置。部屋はドラッグで自由に移動できます。既存要素は選択して変形・移動・削除。<kbd>Esc</kbd>
+        で配置キャンセル、<kbd>Delete</kbd> で削除。<kbd>Ctrl</kbd>+<kbd>Z</kbd> で一手戻る。
+      </p>
+
+      <div className="editor-history-row">
+        <button
+          type="button"
+          className="btn btn-secondary editor-history-btn"
+          disabled={!canUndo}
+          onClick={onUndo}
+          title="一手戻る (Ctrl+Z)"
+        >
+          一手戻る
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary editor-history-btn"
+          disabled={!canRedo}
+          onClick={onRedo}
+          title="やり直す (Ctrl+Y)"
+        >
+          やり直す
+        </button>
+      </div>
+
+      <div className="editor-add-section">
+        <h4>要素を追加</h4>
+        <div className="editor-add-grid">
+          {(
+            [
+              ['room', '部屋'],
+              ['door', '扉'],
+              ['window', '窓'],
+              ['opening', '開口'],
+              ['wall', '壁'],
+            ] as const
+          ).map(([kind, label]) => (
+            <button
+              key={kind}
+              type="button"
+              className={`btn editor-add-btn ${placeKind === kind ? 'active' : ''}`}
+              onClick={() => onPlaceKindChange(placeKind === kind ? null : kind)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="editor-field-hint">設備記号</p>
+        <div className="editor-add-grid">
+          {FIXTURE_TYPE_OPTIONS.map((opt) => {
+            const kind = fixturePlaceKind(opt.value)
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={`btn editor-add-btn ${placeKind === kind ? 'active' : ''}`}
+                title={opt.hint}
+                onClick={() => onPlaceKindChange(placeKind === kind ? null : kind)}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+        <button type="button" className="btn btn-secondary editor-add-quick" onClick={handleQuickAddRoom}>
+          部屋をすぐ追加（横に配置）
+        </button>
+        {placeKind && (
+          <p className="editor-field-hint">
+            {placeKind === 'door' || placeKind === 'window' || placeKind === 'opening'
+              ? '壁・部屋の辺をクリックして追加（連続配置可）。もう一度ボタンか Esc で終了。'
+              : isFixturePlaceKind(placeKind)
+                ? '間取図をクリックして設備を配置（連続配置可）。もう一度ボタンか Esc で終了。'
+                : '配置モード中 — 間取図をクリックして追加（もう一度ボタンか Esc で解除）'}
+          </p>
+        )}
+      </div>
 
       <div className="editor-field">
         <label htmlFor="plan-title">物件名</label>
@@ -226,7 +422,7 @@ export function RoomEditor({
       </div>
 
       <div className="editor-field">
-        <label htmlFor="element-select">部屋・階段を選択</label>
+        <label htmlFor="element-select">要素を選択</label>
         <select
           id="element-select"
           value={selected ? elementRefToKey(selected) : ''}
@@ -251,7 +447,8 @@ export function RoomEditor({
         <div className="editor-merge-section">
           <h4>部屋の合成</h4>
           <p className="editor-hint">
-            同じ階で隣り合った部屋を2つ以上選び「合成する」を押してください。Ctrl+クリックでも追加選択できます。
+            同じ階で隣り合った部屋を2つ以上選び「合成する」を押してください。矩形だけでなく
+            L字・コの字などの直交多角形も合成できます。内壁があっても合成できます。Ctrl+クリックでも追加選択できます。
           </p>
           <p className="editor-field-hint">{mergeFloor.label} — {activeMergeIds.length} 部屋選択中</p>
           <div className="editor-merge-list">
@@ -318,7 +515,7 @@ export function RoomEditor({
             <div className="editor-field editor-size-section">
               <span className="editor-offset-heading">部屋サイズ</span>
               <p className="editor-offset-hint">
-                選択中の部屋と、その辺の壁・扉・窓を更新します（隣の部屋の塗りは動きません）。
+                選択中の部屋と、その辺の壁区間を直交に移動します。数値入力または辺ハンドルをドラッグ。
               </p>
               <div className="editor-size-inputs">
                 <label>
@@ -350,12 +547,130 @@ export function RoomEditor({
                   />
                 </label>
               </div>
+              <div className="editor-nudge-row">
+                <span className="editor-offset-label">位置（50mm）</span>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(0, -50)}>
+                  ↑
+                </button>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(-50, 0)}>
+                  ←
+                </button>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(50, 0)}>
+                  →
+                </button>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(0, 50)}>
+                  ↓
+                </button>
+              </div>
             </div>
           ) : (
-            <p className="editor-fixed-hint">
-              L字型など複雑な形状の部屋は、サイズの数値調整に対応していません。
-            </p>
+            <div className="editor-field editor-size-section">
+              <p className="editor-fixed-hint">
+                L字型など複雑な形状は数値サイズ変更非対応。外壁をドラッグするか、上下左右で全体移動できます。
+              </p>
+              <div className="editor-nudge-row">
+                <span className="editor-offset-label">位置（50mm）</span>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(0, -50)}>
+                  ↑
+                </button>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(-50, 0)}>
+                  ←
+                </button>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(50, 0)}>
+                  →
+                </button>
+                <button type="button" className="btn editor-nudge-btn" onClick={() => handleMoveRoom(0, 50)}>
+                  ↓
+                </button>
+              </div>
+            </div>
           )}
+
+          <div className="editor-field editor-size-section">
+            <span className="editor-offset-heading">角のアール</span>
+            <p className="editor-offset-hint">
+              凸角・凹角（L字の内側など）どちらも円弧にできます。0 で直角に戻ります。壁線は角で直角のままです。
+            </p>
+            <div className="editor-size-inputs">
+              <label>
+                すべての角（mm）
+                <input
+                  type="number"
+                  step={50}
+                  min={0}
+                  placeholder="例: 150"
+                  value={
+                    (() => {
+                      const radii = currentRoom.room.cornerRadiiMm
+                      const n = currentRoom.room.polygon.length
+                      if (!radii || radii.length === 0) return ''
+                      const first = radii[0] ?? 0
+                      const uniform = Array.from({ length: n }, (_, i) => radii[i] ?? 0).every((v) => v === first)
+                      return uniform && first > 0 ? first : ''
+                    })()
+                  }
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    if (raw === '') {
+                      handleRoomField({ cornerRadiiMm: null })
+                      return
+                    }
+                    const val = parseInt(raw, 10)
+                    if (Number.isNaN(val) || val < 0) return
+                    handleRoomField({
+                      cornerRadiiMm: setAllCornerRadiiMm(currentRoom.room.polygon.length, val) ?? null,
+                    })
+                  }}
+                />
+              </label>
+            </div>
+            <div className="editor-nudge-row" style={{ marginTop: 8 }}>
+              {[0, 100, 150, 200, 300].map((mm) => (
+                <button
+                  key={mm}
+                  type="button"
+                  className="btn editor-nudge-btn"
+                  onClick={() =>
+                    handleRoomField({
+                      cornerRadiiMm:
+                        mm <= 0 ? null : setAllCornerRadiiMm(currentRoom.room.polygon.length, mm) ?? null,
+                    })
+                  }
+                >
+                  {mm === 0 ? '直角' : `${mm}`}
+                </button>
+              ))}
+            </div>
+            {currentRoom.room.polygon.length > 0 && (
+              <div className="editor-corner-list" style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+                {currentRoom.room.polygon.map((_, index) => (
+                  <label key={index} className="editor-corner-item" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ minWidth: '3.5em' }}>角 {index + 1}</span>
+                    <input
+                      type="number"
+                      step={50}
+                      min={0}
+                      value={currentRoom.room.cornerRadiiMm?.[index] ?? 0}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10)
+                        if (Number.isNaN(val) || val < 0) return
+                        handleRoomField({
+                          cornerRadiiMm:
+                            setCornerRadiusMmAt(
+                              currentRoom.room.cornerRadiiMm,
+                              currentRoom.room.polygon.length,
+                              index,
+                              val
+                            ) ?? null,
+                        })
+                      }}
+                    />
+                    <span>mm</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="editor-field">
             <label htmlFor="room-fill-color">塗り色</label>
@@ -601,6 +916,58 @@ export function RoomEditor({
           <h4>階段の詳細</h4>
 
           <div className="editor-field">
+            <label htmlFor="stair-width">幅（mm）</label>
+            <input
+              id="stair-width"
+              type="number"
+              min={600}
+              max={1500}
+              step={10}
+              value={currentStair.stair.widthMm ?? STAIR_DEFAULT_WIDTH_MM}
+              onChange={(e) => {
+                const widthMm = Number(e.target.value)
+                if (!Number.isFinite(widthMm) || widthMm <= 0) return
+                handleStairField({ widthMm })
+              }}
+            />
+            <p className="editor-field-hint">標準幅は {STAIR_DEFAULT_WIDTH_MM}mm です。</p>
+          </div>
+
+          <div className="editor-field">
+            <label htmlFor="stair-layout">段の形状</label>
+            <select
+              id="stair-layout"
+              value={resolveStairLayout(currentStair.stair)}
+              onChange={(e) => handleStairField({ layout: e.target.value as StairLayout })}
+            >
+              {STAIR_LAYOUT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="editor-field">
+            <label htmlFor="stair-orientation">上り方向</label>
+            <select
+              id="stair-orientation"
+              value={
+                currentStair.stair.orientation ??
+                resolveStairOrientation(currentStair.stair, getStairBounds(currentStair.stair.polygon))
+              }
+              onChange={(e) => handleStairField({ orientation: e.target.value as StairOrientation })}
+            >
+              {STAIR_ORIENTATION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="editor-field-hint">矢印と段差線の向きを変更します。</p>
+          </div>
+
+          <div className="editor-field">
             <label htmlFor="stair-name">表示名</label>
             <input
               id="stair-name"
@@ -657,6 +1024,173 @@ export function RoomEditor({
               onReset={() => handleStairOffset({ x: 0, y: 0 })}
             />
           </div>
+        </div>
+      )}
+
+      {currentWall && selected?.kind === 'wall' && (
+        <div className="room-editor-form">
+          <h4>壁の詳細</h4>
+          <p className="editor-field-hint">
+            {currentWall.wall.exterior ? '外壁（建物の輪郭）' : '内壁'}
+          </p>
+          <p className="editor-offset-hint">
+            端点（●）で長さ変更、中央（○）で平行移動。外壁を動かすと接している部屋の形状も追従します。
+          </p>
+          <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteWall}>
+            この壁を削除
+          </button>
+        </div>
+      )}
+
+      {currentDoor && selected?.kind === 'door' && (
+        <div className="room-editor-form">
+          <h4>
+            {(currentDoor.door.kind ?? 'swing') === 'opening' ? '開口部の詳細' : '扉の詳細'}
+          </h4>
+          <p className="editor-offset-hint">
+            ドラッグで移動。種類・開き方向を変えると図上の記号がすぐ変わります。
+          </p>
+          <div className="editor-field">
+            <label htmlFor="door-kind">種類</label>
+            <select
+              id="door-kind"
+              value={currentDoor.door.kind ?? 'swing'}
+              onChange={(e) => handleDoorField({ kind: e.target.value as DoorKind })}
+            >
+              {DOOR_KIND_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="editor-field-hint">
+              {DOOR_KIND_OPTIONS.find((o) => o.value === (currentDoor.door.kind ?? 'swing'))?.hint}
+            </p>
+          </div>
+          <div className="editor-field">
+            <label htmlFor="door-width">幅（mm）</label>
+            <input
+              id="door-width"
+              type="number"
+              step={50}
+              min={300}
+              max={3000}
+              value={Math.round(svgUnitsToMm(currentDoor.door.width))}
+              onChange={(e) => {
+                const widthMm = parseInt(e.target.value, 10)
+                if (Number.isNaN(widthMm)) return
+                handleDoorField({ widthMm })
+              }}
+            />
+          </div>
+          <div className="editor-field">
+            <label htmlFor="door-angle">戸の向き（壁沿い）</label>
+            <select
+              id="door-angle"
+              value={((((Math.round(currentDoor.door.angle / 90) % 4) + 4) % 4) * 90)}
+              onChange={(e) => handleDoorField({ angle: Number(e.target.value) })}
+            >
+              <option value={0}>右方向（0°）</option>
+              <option value={90}>下方向（90°）</option>
+              <option value={180}>左方向（180°）</option>
+              <option value={270}>上方向（270°）</option>
+            </select>
+            <p className="editor-field-hint">閉じたときの戸が壁に沿って伸びる向きです。</p>
+          </div>
+          {DOOR_KINDS_WITH_SWING.has(currentDoor.door.kind ?? 'swing') && (
+            <div className="editor-field">
+              <span className="editor-offset-label">開閉の向き</span>
+              <div className="editor-swing-grid">
+                {DOOR_SWING_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`btn editor-swing-btn ${currentDoor.door.swing === opt.value ? 'active' : ''}`}
+                    onClick={() => handleDoorField({ swing: opt.value })}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="editor-field-hint">
+                {DOOR_SWING_OPTIONS.find((o) => o.value === currentDoor.door.swing)?.hint}
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary editor-flip-hinge-btn"
+                onClick={() => handleDoorField({ flipHinge: true })}
+              >
+                丁番の位置を反対側へ
+              </button>
+              <p className="editor-field-hint">開き始点（丁番）を開口の反対端に移します。</p>
+            </div>
+          )}
+          <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteDoor}>
+            この{doorKindLabel(currentDoor.door.kind)}を削除
+          </button>
+        </div>
+      )}
+
+      {currentWindow && selected?.kind === 'window' && (
+        <div className="room-editor-form">
+          <h4>窓の詳細</h4>
+          <p className="editor-offset-hint">
+            両端の●で幅を調整、中央の○で平行移動できます。種類を変えると図上の記号が変わります。
+          </p>
+          <div className="editor-field">
+            <label htmlFor="window-kind">種類</label>
+            <select
+              id="window-kind"
+              value={currentWindow.window.kind ?? 'sliding'}
+              onChange={(e) => handleWindowField({ kind: e.target.value as WindowKind })}
+            >
+              {WINDOW_KIND_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <p className="editor-field-hint">
+              {
+                WINDOW_KIND_OPTIONS.find((o) => o.value === (currentWindow.window.kind ?? 'sliding'))
+                  ?.hint
+              }
+            </p>
+          </div>
+          <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteWindow}>
+            この{windowKindLabel(currentWindow.window.kind)}を削除
+          </button>
+        </div>
+      )}
+
+      {currentFixture && selected?.kind === 'fixture' && (
+        <div className="room-editor-form">
+          <h4>設備の詳細</h4>
+          <div className="editor-field">
+            <label htmlFor="fixture-type">種類</label>
+            <select
+              id="fixture-type"
+              value={currentFixture.fixture.type}
+              onChange={(e) =>
+                applyPlan((prev) =>
+                  updateFixture(prev, selected, {
+                    type: e.target.value as (typeof FIXTURE_TYPE_OPTIONS)[number]['value'],
+                  })
+                )
+              }
+            >
+              {FIXTURE_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="editor-field-hint">{fixtureTypeLabel(currentFixture.fixture.type)}</p>
+          <p className="editor-offset-hint">枠をドラッグして設備の位置を調整できます。</p>
+          <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteFixture}>
+            この設備を削除
+          </button>
         </div>
       )}
 

@@ -1,13 +1,18 @@
+import { useRef } from 'react'
 import type { Point, Room } from '../types/floorPlan'
-import { SELECTION, pointsToPath } from './styles'
+import { SELECTION } from './styles'
+import { filletedPolygonPath } from '../utils/cornerFillet'
 import { computeRoomLabelLayout } from './roomLabelLayout'
 import type { LabelLineKind } from './roomLabelLayout'
 import { resolveRoomFillColor, resolveRoomFillPattern } from './roomFill'
 import { RoomPatternOverlay } from './roomPatterns'
 import { RoomLabels } from './RoomLabels'
+import { attachSvgPointerDrag, canvasToFloor } from './svgCoords'
 
 interface RoomRendererProps {
   room: Room
+  /** canvas → floor 変換用（ドラッグ移動時） */
+  floorOffset?: Point
   selected?: boolean
   mergeSelected?: boolean
   selectable?: boolean
@@ -15,10 +20,13 @@ interface RoomRendererProps {
   renderLabels?: boolean
   onSelect?: (roomId: string, additive: boolean) => void
   onLabelOffsetChange?: (kind: LabelLineKind, offset: Point) => void
+  /** 平行移動後のポリゴン（floor 座標） */
+  onMove?: (roomId: string, polygonFloor: Point[]) => void
 }
 
 export function RoomRenderer({
   room,
+  floorOffset = { x: 0, y: 0 },
   selected,
   mergeSelected,
   selectable,
@@ -26,27 +34,103 @@ export function RoomRenderer({
   renderLabels = true,
   onSelect,
   onLabelOffsetChange,
+  onMove,
 }: RoomRendererProps) {
   const fillColor = resolveRoomFillColor(room)
   const fillPattern = resolveRoomFillPattern(room)
-  const path = pointsToPath(room.polygon)
+  const path = filletedPolygonPath(room.polygon, room.cornerRadiiMm)
   const clipId = `room-clip-${room.id}`
   const label = computeRoomLabelLayout(room)
   const canSelect = selectable && onSelect
+  const canDrag = editable && !!onMove
+  const originRef = useRef<{
+    pointerFloor: Point
+    polygonFloor: Point[]
+  } | null>(null)
+
+  const toFloorPolygon = (canvasPolygon: Point[]) =>
+    canvasPolygon.map((p) => ({
+      x: p.x - floorOffset.x,
+      y: p.y - floorOffset.y,
+    }))
+
+  const startDrag = (e: React.PointerEvent<SVGElement>) => {
+    if (!canDrag) return
+    if (e.ctrlKey || e.metaKey) return
+    const svg = e.currentTarget.ownerSVGElement
+    if (!svg) return
+
+    const canvasPos = (() => {
+      const pt = svg.createSVGPoint()
+      pt.x = e.clientX
+      pt.y = e.clientY
+      const ctm = svg.getScreenCTM()
+      if (!ctm) return null
+      return pt.matrixTransform(ctm.inverse())
+    })()
+    if (!canvasPos) return
+
+    originRef.current = {
+      pointerFloor: canvasToFloor({ x: canvasPos.x, y: canvasPos.y }, floorOffset),
+      polygonFloor: toFloorPolygon(room.polygon),
+    }
+
+    attachSvgPointerDrag(
+      e,
+      svg,
+      (pos) => {
+        const origin = originRef.current
+        if (!origin) return
+        const currentFloor = canvasToFloor(pos, floorOffset)
+        const dx = currentFloor.x - origin.pointerFloor.x
+        const dy = currentFloor.y - origin.pointerFloor.y
+        onMove!(
+          room.id,
+          origin.polygonFloor.map((p) => ({
+            x: p.x + dx,
+            y: p.y + dy,
+          }))
+        )
+      },
+      () => {
+        originRef.current = null
+      }
+    )
+  }
+
+  const handlePointerDown = (e: React.PointerEvent<SVGElement>) => {
+    if (!canSelect && !canDrag) return
+    e.stopPropagation()
+
+    const additive = e.ctrlKey || e.metaKey
+    if (!selected && onSelect) {
+      onSelect(room.id, additive)
+    } else if (additive && onSelect) {
+      onSelect(room.id, true)
+      return
+    }
+
+    if (canDrag && !additive) {
+      startDrag(e)
+    }
+  }
 
   return (
     <g
-      className={`room ${selected ? 'room-selected' : ''} ${mergeSelected ? 'room-merge-selected' : ''} ${canSelect ? 'room-selectable' : ''}`}
+      className={`room ${selected ? 'room-selected' : ''} ${mergeSelected ? 'room-merge-selected' : ''} ${canSelect ? 'room-selectable' : ''} ${canDrag ? 'room-draggable' : ''}`}
       data-room-id={room.id}
+      data-no-pan={canDrag ? '' : undefined}
+      onPointerDown={canSelect || canDrag ? handlePointerDown : undefined}
       onClick={
         canSelect
           ? (e) => {
               e.stopPropagation()
-              onSelect(room.id, e.ctrlKey || e.metaKey)
+              // ドラッグ後の click でも選択状態を維持（additive のみここでも処理）
+              if (e.ctrlKey || e.metaKey) onSelect(room.id, true)
             }
           : undefined
       }
-      style={canSelect ? { cursor: 'pointer' } : undefined}
+      style={canDrag ? { cursor: 'grab' } : canSelect ? { cursor: 'pointer' } : undefined}
     >
       <defs>
         <clipPath id={clipId}>
@@ -58,7 +142,7 @@ export function RoomRenderer({
         fill={fillColor}
         stroke={selected ? SELECTION.stroke : 'none'}
         strokeWidth={selected ? SELECTION.strokeWidth : 0}
-        pointerEvents={canSelect ? 'all' : undefined}
+        pointerEvents={canSelect || canDrag ? 'all' : undefined}
       />
       <RoomPatternOverlay room={room} pattern={fillPattern} clipId={clipId} />
       {renderLabels && label && (

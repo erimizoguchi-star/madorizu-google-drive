@@ -1,5 +1,9 @@
-const GEMINI_MODEL = 'gemini-2.0-flash'
+/** @see https://ai.google.dev/gemini-api/docs/deprecations */
+export const GEMINI_MODEL_FLASH = 'gemini-3.5-flash'
+export const GEMINI_MODEL_PRO = 'gemini-3.5-pro'
+const GEMINI_MODEL = GEMINI_MODEL_FLASH
 const MAX_RETRIES = 3
+const REQUEST_TIMEOUT_MS = 180_000
 
 export function normalizeApiKey(key: string): string {
   return key.trim().replace(/^["']|["']$/g, '')
@@ -80,16 +84,24 @@ export async function fetchGemini(
   path: string,
   options: RequestInit & { apiKey?: string } = {}
 ): Promise<Response> {
-  const { apiKey, headers: extraHeaders, ...rest } = options
+  const { apiKey, headers: extraHeaders, signal, ...rest } = options
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+
   try {
     return await fetch(`/api/gemini${path}`, {
       ...rest,
+      signal: signal ?? timeoutSignal,
       headers: {
         ...buildAuthHeaders(apiKey),
         ...(extraHeaders as Record<string, string>),
       },
     })
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      throw new Error(
+        'AI解析がタイムアウトしました（3分）。画像サイズを小さくするか、しばらく待ってから再試行してください。'
+      )
+    }
     throw new Error(
       'APIへの接続に失敗しました。npm run dev で起動した http://localhost:5173 からアクセスしているか確認してください。'
     )

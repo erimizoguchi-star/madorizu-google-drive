@@ -1,0 +1,56 @@
+﻿# 新しいPCへの移行手順（Google Drive用）
+
+このフォルダは Google Drive へアップロードするための軽量パッケージです。
+`node_modules`（約180MB）と APIキー（`.env`）は含めていません。
+
+## 古いPC側（アップロード）
+
+1. このフォルダ `madorizu-google-drive` を Google Drive にアップロードする
+2. （任意）同じ場所の `madorizu-google-drive.zip` があれば、zipの方が1ファイルで簡単です
+3. APIキーは Drive に上げず、メモ帳などに控えるか、新しいPCで再発行する
+
+## 新しいPC側（セットアップ）
+
+### 1. Node.js を入れる
+https://nodejs.org/ から LTS 版をインストール
+
+### 2. このフォルダをダウンロード
+Google Drive からダウンロードし、同期フォルダ外（例: ドキュメント）に置く
+
+### 3. 依存関係を入れる
+PowerShell または ターミナルで:
+
+```powershell
+cd このフォルダのパス
+npm install
+```
+
+### 4. APIキーを設定
+`.env.example` をコピーして `.env` を作り、キーを入れる:
+
+```
+GEMINI_API_KEY=あなたのキー
+```
+
+### 5. 起動
+
+```powershell
+npm run dev
+```
+
+ブラウザで http://127.0.0.1:5173/ を開く
+
+## 含めているもの / 含めていないもの
+
+| 含む | 含めない |
+|------|----------|
+| ソースコード (`src`) | `node_modules` |
+| `package.json` / lock | `dist`（ビルド結果） |
+| `.git`（変更履歴） | `.env`（APIキー） |
+| `.env.example` | ログ・一時ファイル |
+
+## トラブル時
+
+- `npm install` で失敗 → Node.js が入っているか確認（`node -v`）
+- AI解析が動かない → `.env` のキーを確認
+- 画面が白い → ブラウザのコンソールを確認し、`npm install` を再実行

@@ -3,6 +3,11 @@ import { STAIR, pointsToPath } from './styles'
 import { computeStairLabelLayout } from './roomLabelLayout'
 import { RoomLabels } from './RoomLabels'
 import type { LabelLineKind } from './roomLabelLayout'
+import {
+  arrowHeadPoints,
+  arrowPathToSvgD,
+  computeStairGraphics,
+} from './stairGraphics'
 
 interface StairRendererProps {
   stair: Stair
@@ -25,40 +30,11 @@ export function StairRenderer({
 }: StairRendererProps) {
   const path = pointsToPath(stair.polygon)
   const clipId = `stair-clip-${stair.id}`
-  const xs = stair.polygon.map((p) => p.x)
-  const ys = stair.polygon.map((p) => p.y)
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
-  const isVertical = maxY - minY > maxX - minX
+  const { stepLines, arrowPath } = computeStairGraphics(stair)
   const label = computeStairLabelLayout(stair)
   const canSelect = selectable && onSelect
-
-  const stepCount = 5
-  const stepLines = []
-  for (let i = 1; i < stepCount; i++) {
-    const t = i / stepCount
-    if (isVertical) {
-      const y = minY + (maxY - minY) * t
-      stepLines.push(
-        <line key={i} x1={minX} y1={y} x2={maxX} y2={y} stroke={STAIR.line} strokeWidth={0.5} />
-      )
-    } else {
-      const x = minX + (maxX - minX) * t
-      stepLines.push(
-        <line key={i} x1={x} y1={minY} x2={x} y2={maxY} stroke={STAIR.line} strokeWidth={0.5} />
-      )
-    }
-  }
-
-  const arrowSize = 7
-  const centerX = (minX + maxX) / 2
-  const arrowY = stair.direction === 'up' ? minY + 12 : maxY - 12
-  const arrowPoints =
-    stair.direction === 'up'
-      ? `${centerX},${arrowY - arrowSize} ${centerX - 4},${arrowY} ${centerX + 4},${arrowY}`
-      : `${centerX},${arrowY + arrowSize} ${centerX - 4},${arrowY} ${centerX + 4},${arrowY}`
+  const tip = arrowPath?.points[arrowPath.points.length - 1]
+  const startR = 2.2
 
   return (
     <g
@@ -80,8 +56,43 @@ export function StairRenderer({
         </clipPath>
       </defs>
       <path d={path} fill={STAIR.fill} stroke="none" pointerEvents={canSelect ? 'all' : undefined} />
-      {stepLines}
-      <polygon points={arrowPoints} fill={STAIR.accent} opacity={0.7} />
+      <g className="stair-steps" clipPath={`url(#${clipId})`}>
+        {stepLines.map((line, i) => (
+          <line
+            key={i}
+            x1={line.x1}
+            y1={line.y1}
+            x2={line.x2}
+            y2={line.y2}
+            stroke={STAIR.line}
+            strokeWidth={0.65}
+          />
+        ))}
+      </g>
+      {arrowPath && tip && (
+        <g className="stair-arrow" clipPath={`url(#${clipId})`}>
+          <circle
+            cx={arrowPath.start.x}
+            cy={arrowPath.start.y}
+            r={startR}
+            fill="none"
+            stroke={STAIR.line}
+            strokeWidth={0.7}
+          />
+          <path
+            d={arrowPathToSvgD(arrowPath.points)}
+            fill="none"
+            stroke={STAIR.line}
+            strokeWidth={0.7}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          <polygon
+            points={arrowHeadPoints(tip, arrowPath.tipAngleDeg)}
+            fill={STAIR.line}
+          />
+        </g>
+      )}
       {renderLabels && label && (
         <RoomLabels
           layout={label}

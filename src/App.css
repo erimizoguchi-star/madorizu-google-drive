@@ -396,6 +396,59 @@
   border: 1px solid #E8D5D0;
 }
 
+.analyzing-hint {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.quality-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.quality-toggle input {
+  margin-top: 0.2rem;
+}
+
+.quality-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+
+.app-error-fallback {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  text-align: center;
+  background: var(--color-bg, #faf8f5);
+  color: var(--color-text, #2d2a26);
+}
+
+.app-error-fallback h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-error-fallback p {
+  margin: 0;
+  max-width: 36rem;
+  color: var(--color-text-muted, #6b6560);
+  white-space: pre-line;
+}
+
 .analysis-info {
   background: var(--color-accent-soft);
   padding: 0.75rem;
@@ -444,7 +497,13 @@
 
 .export-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.export-buttons .btn {
+  flex: 1 1 calc(50% - 0.25rem);
+  min-width: 4.5rem;
 }
 
 .data-share-section {
@@ -533,12 +592,37 @@
 .floors-container {
   display: flex;
   flex-direction: row;
-  gap: 2.5rem;
+  gap: 3rem;
   justify-content: center;
   align-items: flex-start;
   flex-wrap: wrap;
   width: fit-content;
   margin: 0 auto;
+  padding: 0.5rem 1rem 1.5rem;
+}
+
+.floor-label {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: #222;
+  letter-spacing: 0.08em;
+}
+
+.generated-preview-card .floor-label {
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+  color: #222;
+}
+
+.floor-canvas {
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  box-shadow: none;
+  background: #fff;
 }
 
 .zoomable-view {
@@ -706,37 +790,21 @@
   flex: 0 0 auto;
 }
 
-.floor-label {
-  font-size: 0.75rem;
-  font-weight: 500;
-  margin-bottom: 0.6rem;
-  color: var(--color-text-muted);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.generated-preview-card .floor-label {
-  font-size: 0.6875rem;
-  margin-bottom: 0.35rem;
-}
-
-.floor-canvas {
-  width: 100%;
-  max-width: 560px;
-  height: auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-}
-
 .floor-canvas-editable .walls-layer,
-.floor-canvas-editable .doors-layer,
-.floor-canvas-editable .windows-layer,
-.floor-canvas-editable .fixtures-layer,
 .floor-canvas-selectable .walls-layer,
+.floor-canvas-editable .doors-layer,
 .floor-canvas-selectable .doors-layer,
+.floor-canvas-editable .windows-layer,
 .floor-canvas-selectable .windows-layer,
+.floor-canvas-editable .fixtures-layer,
 .floor-canvas-selectable .fixtures-layer {
+  pointer-events: auto;
+}
+
+.floor-canvas-editable .doors-layer line,
+.floor-canvas-editable .doors-layer path,
+.floor-canvas-editable .windows-layer line,
+.floor-canvas-editable .fixtures-layer .fixture {
   pointer-events: none;
 }
 
@@ -744,8 +812,43 @@
   pointer-events: auto;
 }
 
+.wall-selectable .wall-hit-line {
+  cursor: pointer;
+}
+
+.window-selectable .window-hit-line {
+  cursor: pointer;
+}
+
+.door-hit-line,
+.door-hit {
+  cursor: pointer;
+}
+
+.door-editable .door-hit-line,
+.door-editable .door-hit {
+  cursor: grab;
+}
+
+.fixture-hit {
+  cursor: pointer;
+}
+
+.edit-handles-layer,
 .resize-handles-layer {
   pointer-events: auto;
+}
+
+.edit-handle {
+  cursor: grab;
+}
+
+.edit-handle-mid {
+  cursor: move;
+}
+
+.edit-handle:active {
+  cursor: grabbing;
 }
 
 .room-resize-handle {
@@ -759,6 +862,14 @@
 .floor-canvas-selectable .room-selectable:hover path:first-of-type,
 .floor-canvas-selectable .stair-selectable:hover path:first-of-type {
   filter: brightness(0.97);
+}
+
+.room-draggable {
+  cursor: grab;
+}
+
+.room-draggable:active {
+  cursor: grabbing;
 }
 
 .floor-canvas-editable .room-editable:hover path:first-of-type,
@@ -808,6 +919,127 @@
 .editor-merge-btn {
   width: 100%;
   font-size: 0.8125rem;
+}
+
+.editor-add-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.editor-history-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.editor-history-btn {
+  font-size: 0.75rem;
+  padding: 0.45rem 0.35rem;
+}
+
+.editor-history-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.editor-swing-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+
+.editor-swing-btn {
+  font-size: 0.75rem;
+  padding: 0.5rem 0.35rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.editor-swing-btn:hover {
+  border-color: var(--color-accent);
+}
+
+.editor-swing-btn.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.editor-flip-hinge-btn {
+  width: 100%;
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.editor-add-section h4 {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin: 0 0 0.5rem;
+}
+
+.editor-add-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.editor-add-btn {
+  font-size: 0.75rem;
+  padding: 0.45rem 0.25rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.editor-add-btn:hover {
+  border-color: var(--color-accent);
+}
+
+.editor-add-btn.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.editor-add-quick {
+  width: 100%;
+  font-size: 0.75rem;
+  margin-top: 0.15rem;
+}
+
+.editor-nudge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+.editor-nudge-btn {
+  min-width: 2rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.floor-canvas-placing {
+  cursor: crosshair;
+}
+
+.place-mode-hint {
+  font-weight: 500;
 }
 
 .edit-mode-hint {

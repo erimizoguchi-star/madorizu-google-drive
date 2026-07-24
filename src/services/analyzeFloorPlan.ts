@@ -1,215 +1,524 @@
 import type { AnalysisResult, FloorPlan } from '../types/floorPlan'
-import { isAreaJoHiddenByType } from '../constants/roomTypes'
+
 import { sampleHouse } from '../data/sampleHouse'
+
+import { ANALYSIS_PROMPT } from './analysisPrompt'
+
+import { normalizeFloorPlan } from '../utils/floorPlanNormalize'
+import { extractGeminiText, parseAiJsonContent, type GeminiGenerateResponse } from '../utils/parseAiJson'
+
 import {
+
   fetchGeminiWithRetry,
-  GEMINI_MODEL,
+
+  GEMINI_MODEL_FLASH,
+
+  GEMINI_MODEL_PRO,
+
   normalizeApiKey,
+
   parseGeminiError,
+
   validateApiKeyFormat,
+
 } from './geminiApi'
 
-const ANALYSIS_PROMPT = `あなたは建築平面図の解析エキスパートです。
-アップロードされた平面図画像を分析し、以下のJSON形式で間取りデータを出力してください。
 
-{
-  "title": "物件名",
-  "floors": [
-    {
-      "id": "1f",
-      "name": "1F",
-      "label": "1階",
-      "rooms": [
-        {
-          "id": "room1",
-          "name": "LD",
-          "type": "ld",
-          "areaJo": 13.2,
-          "polygon": [{"x": 0, "y": 0}, {"x": 100, "y": 0}]
-        }
-      ],
-      "walls": [{"id": "w1", "start": {"x": 0, "y": 0}, "end": {"x": 100, "y": 0}, "exterior": true}],
-      "doors": [{"id": "d1", "position": {"x": 50, "y": 0}, "width": 8, "angle": 0, "swing": 1}],
-      "windows": [{"id": "win1", "start": {"x": 0, "y": 50}, "end": {"x": 30, "y": 50}}],
-      "fixtures": [],
-      "stairs": []
-    }
-  ]
-}
 
-room type は以下から選択: ld, kitchen, bathroom, toilet, washroom, japanese, western, hallway, entrance, stairs, storage, porch, attic, void, other
-廊下・ホール（type: hallway）および階段（type: stairs）には areaJo を含めないでください。
-階段は stairs 配列に含め、name フィールドで名称を指定してください。
-座標は mm 単位（1m = 1000mm）。原点は左上。x は右方向、y は下方向。
-壁・扉・窓・設備も可能な限り含めてください。
-JSONのみを返してください。`
+const STANDARD_MAX_IMAGE_DIMENSION = 2048
 
-const MAX_IMAGE_DIMENSION = 1536
+const HIGH_MAX_IMAGE_DIMENSION = 2560
+
+
 
 export type AnalysisMode = 'demo' | 'gemini'
 
+export type AnalysisQuality = 'standard' | 'high'
+
+
+
 export interface AnalyzeOptions {
+
   mode: AnalysisMode
+
   apiKey?: string
+
   useServerKey?: boolean
+
+  quality?: AnalysisQuality
+
 }
 
-/** 大きな画像はリサイズして API の消費量を抑える */
-async function prepareImageForAnalysis(file: File): Promise<{ base64: string; mimeType: string }> {
+
+
+function isModelUnavailable(status: number, body: string): boolean {
+
+  if (status !== 400 && status !== 404) return false
+
+  const lower = body.toLowerCase()
+
+  return lower.includes('model') && (lower.includes('not found') || lower.includes('not available'))
+
+}
+
+
+
+/** 図面の線を潰さないよう PNG で高解像度に整える */
+
+async function prepareImageForAnalysis(
+
+  file: File,
+
+  maxDimension: number
+
+): Promise<{ base64: string; mimeType: string }> {
+
   const mimeType = file.type || 'image/png'
 
+
+
   if (!mimeType.startsWith('image/')) {
+
     const raw = await fileToBase64(file)
+
     return { base64: raw, mimeType: 'image/png' }
+
   }
+
+
 
   const bitmap = await createImageBitmap(file)
-  const { width, height } = bitmap
-  const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(width, height))
 
-  if (scale >= 1) {
-    bitmap.close()
-    return { base64: await fileToBase64(file), mimeType }
-  }
+  const { width, height } = bitmap
+
+  const scale = Math.min(1, maxDimension / Math.max(width, height))
 
   const canvas = document.createElement('canvas')
-  canvas.width = Math.round(width * scale)
-  canvas.height = Math.round(height * scale)
+
+  canvas.width = Math.max(1, Math.round(width * scale))
+
+  canvas.height = Math.max(1, Math.round(height * scale))
+
   const ctx = canvas.getContext('2d')
+
   if (!ctx) {
+
     bitmap.close()
+
     return { base64: await fileToBase64(file), mimeType }
+
   }
+
+
+
+  ctx.fillStyle = '#FFFFFF'
+
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
 
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+
   bitmap.close()
 
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
-  return { base64: dataUrl.split(',')[1] ?? '', mimeType: 'image/jpeg' }
+
+
+  const dataUrl = canvas.toDataURL('image/png')
+
+  return { base64: dataUrl.split(',')[1] ?? '', mimeType: 'image/png' }
+
 }
+
+
 
 function fileToBase64(file: File): Promise<string> {
+
   return new Promise((resolve, reject) => {
+
     const reader = new FileReader()
+
     reader.onload = () => {
+
       const result = reader.result as string
+
       resolve(result.split(',')[1] ?? '')
+
     }
+
     reader.onerror = reject
+
     reader.readAsDataURL(file)
+
   })
+
 }
 
-async function analyzeWithGemini(file: File, apiKey?: string): Promise<FloorPlan> {
-  const { base64, mimeType } = await prepareImageForAnalysis(file)
 
-  const response = await fetchGeminiWithRetry(`/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+
+function buildGenerationConfig(quality: AnalysisQuality, model: string) {
+
+  const config: Record<string, unknown> = {
+
+    responseMimeType: 'application/json',
+
+    temperature: 0,
+
+    maxOutputTokens: 32768,
+
+  }
+
+
+
+  if (model === GEMINI_MODEL_FLASH) {
+
+    config.thinkingConfig = {
+
+      thinkingBudget: quality === 'high' ? 8192 : 2048,
+
+    }
+
+  }
+
+
+
+  return config
+
+}
+
+
+
+async function requestFloorPlan(
+
+  file: File,
+
+  apiKey: string | undefined,
+
+  model: string,
+
+  quality: AnalysisQuality
+
+): Promise<FloorPlan> {
+
+  const maxDimension =
+
+    quality === 'high' ? HIGH_MAX_IMAGE_DIMENSION : STANDARD_MAX_IMAGE_DIMENSION
+
+  const { base64, mimeType } = await prepareImageForAnalysis(file, maxDimension)
+
+
+
+  const response = await fetchGeminiWithRetry(`/v1beta/models/${model}:generateContent`, {
+
     method: 'POST',
+
     apiKey,
+
     body: JSON.stringify({
+
       contents: [
+
         {
+
           role: 'user',
+
           parts: [
+
             { text: ANALYSIS_PROMPT },
+
             {
+
               inlineData: {
+
                 mimeType,
+
                 data: base64,
+
               },
+
             },
+
           ],
+
         },
+
       ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.2,
-      },
+
+      generationConfig: buildGenerationConfig(quality, model),
+
     }),
+
   })
+
+
 
   if (!response.ok) {
+
     const err = await response.text()
-    throw new Error(parseGeminiError(response.status, err))
+
+    const error = new Error(parseGeminiError(response.status, err))
+
+    if (isModelUnavailable(response.status, err)) {
+
+      ;(error as Error & { modelUnavailable?: boolean }).modelUnavailable = true
+
+    }
+
+    throw error
+
   }
 
-  const data = await response.json()
-  const content =
-    data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? ''
 
-  const jsonMatch = content.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) {
-    throw new Error('AIからの応答をJSONとして解析できませんでした')
+
+  const data = (await response.json()) as GeminiGenerateResponse
+
+  if (!data.candidates?.length) {
+
+    const blockReason = data.promptFeedback?.blockReason
+
+    throw new Error(
+
+      blockReason
+
+        ? `AI解析がブロックされました（${blockReason}）。別の画像で試してください。`
+
+        : 'AIから有効な応答が返りませんでした。'
+
+    )
+
   }
 
-  const parsed = JSON.parse(jsonMatch[0]) as FloorPlan
-  return normalizeFloorPlan(parsed)
+
+
+  const { text: content, finishReason } = extractGeminiText(data)
+
+
+
+  if (!content.trim()) {
+
+    throw new Error('AIから空の応答が返りました。')
+
+  }
+
+
+
+  if (finishReason === 'MAX_TOKENS') {
+
+    throw new Error(
+
+      'AIの応答が途中で切れました。画像を1階分にクロップするか、高精度モードをオフにして再試行してください。'
+
+    )
+
+  }
+
+
+
+  let parsed: FloorPlan
+
+  try {
+
+    parsed = parseAiJsonContent(content) as FloorPlan
+
+  } catch {
+
+    throw new Error(
+
+      'AIからの応答をJSONとして解析できませんでした。もう一度お試しください。\n' +
+
+        '（図面を1階ずつ・余白を少なくしたPNGで試すと成功率が上がります）'
+
+    )
+
+  }
+
+
+
+  try {
+
+    return normalizeFloorPlan(parsed)
+
+  } catch (error) {
+
+    if (error instanceof Error) throw error
+
+    throw new Error('AIの応答を間取データに変換できませんでした。')
+
+  }
+
 }
 
-function normalizeFloorPlan(plan: FloorPlan): FloorPlan {
-  return {
-    title: plan.title || '間取図',
-    scaleMm: plan.scaleMm ?? 100,
-    floors: (plan.floors ?? []).map((floor, i) => ({
-      id: floor.id ?? `floor-${i}`,
-      name: floor.name ?? `${i + 1}F`,
-      label: floor.label ?? `${i + 1}階`,
-      rooms: (floor.rooms ?? []).map((room) => ({
-        ...room,
-        ...(isAreaJoHiddenByType(room.type) ? { showAreaJo: false as const } : {}),
-      })),
-      walls: floor.walls ?? [],
-      doors: floor.doors ?? [],
-      windows: floor.windows ?? [],
-      fixtures: floor.fixtures ?? [],
-      stairs: (floor.stairs ?? []).map((stair) => ({
-        ...stair,
-        name: stair.name ?? '階段',
-      })),
-    })),
+
+
+async function analyzeWithGemini(
+
+  file: File,
+
+  apiKey: string | undefined,
+
+  quality: AnalysisQuality
+
+): Promise<{ floorPlan: FloorPlan; modelUsed: string }> {
+
+  const models =
+
+    quality === 'high'
+
+      ? [GEMINI_MODEL_PRO, GEMINI_MODEL_FLASH, 'gemini-2.5-flash']
+
+      : [GEMINI_MODEL_FLASH, 'gemini-2.5-flash']
+
+
+
+  let lastError: Error | null = null
+
+  for (let i = 0; i < models.length; i++) {
+
+    const model = models[i]
+
+    try {
+
+      const floorPlan = await requestFloorPlan(file, apiKey, model, quality)
+
+      return { floorPlan, modelUsed: model }
+
+    } catch (error) {
+
+      const err = error instanceof Error ? error : new Error('解析に失敗しました')
+
+      lastError = err
+
+      const canFallback =
+
+        i < models.length - 1 &&
+
+        ((err as Error & { modelUnavailable?: boolean }).modelUnavailable === true ||
+
+          err.message.includes('JSONとして解析'))
+
+      if (!canFallback) break
+
+    }
+
   }
+
+
+
+  throw lastError ?? new Error('解析に失敗しました')
+
 }
+
+
 
 export async function analyzeFloorPlan(
+
   file: File,
+
   options: AnalyzeOptions
+
 ): Promise<AnalysisResult> {
+
   if (options.mode === 'demo') {
+
     await new Promise((r) => setTimeout(r, 800))
+
     return {
+
       floorPlan: structuredClone(sampleHouse),
+
       confidence: 0,
+
       mode: 'demo',
+
       notes: [
+
         'デモモードでは、アップロードした平面図は解析されません',
+
         '右側に表示されているのは固定のサンプル間取図です',
+
         '実際の平面図から間取図を作るには「AI解析」モードと Gemini API キーが必要です',
+
       ],
+
     }
+
   }
+
+
 
   const normalizedKey = options.apiKey ? normalizeApiKey(options.apiKey) : ''
+
   const formatError = normalizedKey ? validateApiKeyFormat(normalizedKey) : null
 
+  const quality = options.quality ?? 'standard'
+
+
+
   if (!normalizedKey && !options.useServerKey) {
+
     throw new Error('Gemini API キーが必要です。.env に GEMINI_API_KEY を設定するか、入力欄にキーを入力してください。')
-  }
-  if (formatError && !options.useServerKey) {
-    throw new Error(formatError)
+
   }
 
-  const floorPlan = await analyzeWithGemini(file, normalizedKey || undefined)
-  return {
-    floorPlan,
-    confidence: 0.7,
-    mode: 'gemini',
-    notes: ['Gemini AI解析結果です。必要に応じて手動で調整してください'],
+  if (formatError && !options.useServerKey) {
+
+    throw new Error(formatError)
+
   }
+
+
+
+  const { floorPlan, modelUsed } = await analyzeWithGemini(
+
+    file,
+
+    normalizedKey || undefined,
+
+    quality
+
+  )
+
+
+
+  const notes = [
+
+  quality === 'high'
+
+    ? `高精度モード（${modelUsed}）で解析しました`
+
+    : `標準モード（${modelUsed}）で解析しました`,
+
+    '図面の縮尺・部屋数・形状は手動で調整が必要な場合があります',
+
+    '編集モードで部屋名・サイズ・合成を調整できます',
+
+  ]
+
+
+
+  return {
+
+    floorPlan,
+
+    confidence: quality === 'high' ? 0.75 : 0.65,
+
+    mode: 'gemini',
+
+    notes,
+
+  }
+
 }
+
+
 
 export function validateFloorPlanJson(json: unknown): FloorPlan {
+
   if (!json || typeof json !== 'object') {
+
     throw new Error('無効なJSONです')
+
   }
+
   return normalizeFloorPlan(json as FloorPlan)
+
 }
+
+

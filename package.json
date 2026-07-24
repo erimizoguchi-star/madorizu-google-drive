@@ -10,6 +10,7 @@
     "test-api-key": "node scripts/test-api-key.mjs"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "pdfjs-dist": "^6.0.227",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

@@ -1,6 +1,7 @@
+import type { ReactElement } from 'react'
 import type { Room } from '../types/floorPlan'
 import type { RoomFillPattern } from '../types/floorPlan'
-import { ATTIC_HATCH, TATAMI } from './styles'
+import { ATTIC_HATCH, TATAMI, TILE, WOOD_FLOORING } from './styles'
 import { computeTatamiLayout, tatamiGridLines } from './tatamiLayout'
 
 interface RoomPatternOverlayProps {
@@ -65,6 +66,99 @@ function GridPattern({ polygon, clipId }: { polygon: Room['polygon']; clipId: st
   )
 }
 
+function WoodPattern({ polygon, clipId }: { polygon: Room['polygon']; clipId: string }) {
+  const { minX, maxX, minY, maxY } = polygonBounds(polygon)
+  const { plankSpacing, grainSpacing, grainStepX, seamColor, seamWidth, grainColor, grainWidth, grainOpacity, seamOpacity } =
+    WOOD_FLOORING
+
+  const elements: ReactElement[] = []
+
+  for (let y = minY + plankSpacing; y < maxY; y += plankSpacing) {
+    elements.push(
+      <line
+        key={`seam-${y}`}
+        x1={minX}
+        y1={y}
+        x2={maxX}
+        y2={y}
+        stroke={seamColor}
+        strokeWidth={seamWidth}
+        opacity={seamOpacity}
+      />
+    )
+  }
+
+  for (let y = minY + grainSpacing; y < maxY; y += grainSpacing) {
+    const plankIndex = Math.floor((y - minY) / plankSpacing)
+    const drift = (plankIndex % 3) * 0.25
+    for (let x = minX; x < maxX; x += grainStepX) {
+      const len = 16 + ((x + plankIndex * 17) % 11)
+      const wobble = ((x + y) % 5) * 0.08
+      elements.push(
+        <line
+          key={`grain-${y}-${x}`}
+          x1={x}
+          y1={y + drift}
+          x2={x + len}
+          y2={y + drift + wobble}
+          stroke={grainColor}
+          strokeWidth={grainWidth}
+          opacity={grainOpacity}
+          strokeLinecap="round"
+        />
+      )
+    }
+  }
+
+  return (
+    <g className="room-pattern room-pattern-wood" clipPath={`url(#${clipId})`}>
+      {elements}
+    </g>
+  )
+}
+
+function TilePattern({ room, clipId }: { room: Room; clipId: string }) {
+  const { minX, maxX, minY, maxY } = polygonBounds(room.polygon)
+  const { spacing, lineWidth } = TILE
+  const preset = room.type === 'entrance' ? TILE.entrance : TILE.porch
+  const elements: ReactElement[] = []
+
+  for (let x = minX + spacing; x < maxX; x += spacing) {
+    elements.push(
+      <line
+        key={`v-${x}`}
+        x1={x}
+        y1={minY}
+        x2={x}
+        y2={maxY}
+        stroke={preset.grout}
+        strokeWidth={lineWidth}
+        opacity={preset.opacity}
+      />
+    )
+  }
+  for (let y = minY + spacing; y < maxY; y += spacing) {
+    elements.push(
+      <line
+        key={`h-${y}`}
+        x1={minX}
+        y1={y}
+        x2={maxX}
+        y2={y}
+        stroke={preset.grout}
+        strokeWidth={lineWidth}
+        opacity={preset.opacity}
+      />
+    )
+  }
+
+  return (
+    <g className="room-pattern room-pattern-tile" clipPath={`url(#${clipId})`}>
+      {elements}
+    </g>
+  )
+}
+
 function TatamiPattern({
   polygon,
   areaJo,
@@ -99,5 +193,7 @@ export function RoomPatternOverlay({ room, pattern, clipId }: RoomPatternOverlay
   if (pattern === 'none') return null
   if (pattern === 'hatch') return <HatchPattern polygon={room.polygon} clipId={clipId} />
   if (pattern === 'grid') return <GridPattern polygon={room.polygon} clipId={clipId} />
+  if (pattern === 'wood') return <WoodPattern polygon={room.polygon} clipId={clipId} />
+  if (pattern === 'tile') return <TilePattern room={room} clipId={clipId} />
   return <TatamiPattern polygon={room.polygon} areaJo={room.areaJo} clipId={clipId} />
 }

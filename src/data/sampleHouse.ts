@@ -179,12 +179,17 @@ export const sampleHouse: FloorPlan = {
         { id: 'f3', type: 'toilet', position: { x: mmToSvg(2700), y: mmToSvg(1200) }, width: mmToSvg(350), height: mmToSvg(500) },
         { id: 'f4', type: 'kitchen_sink', position: { x: mmToSvg(300), y: mmToSvg(3300) }, width: mmToSvg(600), height: mmToSvg(400) },
         { id: 'f5', type: 'stove', position: { x: mmToSvg(300), y: mmToSvg(2850) }, width: mmToSvg(600), height: mmToSvg(350) },
+        { id: 'f6', type: 'refrigerator', position: { x: mmToSvg(1200), y: mmToSvg(2850) }, width: mmToSvg(500), height: mmToSvg(500) },
+        { id: 'f7', type: 'washer', position: { x: mmToSvg(1650), y: mmToSvg(950) }, width: mmToSvg(500), height: mmToSvg(500) },
+        { id: 'f8', type: 'car', position: { x: mmToSvg(-2100), y: mmToSvg(2500) }, width: mmToSvg(1800), height: mmToSvg(4200) },
       ],
       stairs: [
         {
           id: 'st1',
           name: '階段',
           direction: 'up',
+          layout: 'turn-right',
+          orientation: 'up',
           polygon: [
             { x: mmToSvg(2700), y: mmToSvg(3300) },
             { x: mmToSvg(3600), y: mmToSvg(3300) },

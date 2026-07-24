@@ -4,6 +4,7 @@ import type { LabelLineKind } from './roomLabelLayout'
 import { CANVAS } from './styles'
 import { DoorRenderer } from './DoorRenderer'
 import { FixtureRenderer } from './FixtureRenderer'
+import { NorthArrow } from './NorthArrow'
 import { RoomLabels } from './RoomLabels'
 import { computeRoomLabelLayout, computeStairLabelLayout } from './roomLabelLayout'
 import { RoomRenderer } from './RoomRenderer'
@@ -11,7 +12,11 @@ import { RoomResizeHandles } from './RoomResizeHandles'
 import { StairRenderer } from './StairRenderer'
 import { WallRenderer } from './WallRenderer'
 import { WindowRenderer } from './WindowRenderer'
+import { WallEditHandles } from './WallEditHandles'
+import { WindowEditHandles } from './WindowEditHandles'
+import { FixtureEditHandles } from './FixtureEditHandles'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
+import { clientToSvg, canvasToFloor } from './svgCoords'
 
 interface FloorCanvasProps {
   floor: Floor
@@ -20,37 +25,94 @@ interface FloorCanvasProps {
   mergeRoomIds?: string[]
   selectedRoomId?: string | null
   selectedStairId?: string | null
+  selectedWallId?: string | null
+  selectedDoorId?: string | null
+  selectedWindowId?: string | null
+  selectedFixtureId?: string | null
   onRoomSelect?: (roomId: string, additive?: boolean) => void
   onStairSelect?: (stairId: string) => void
+  onWallSelect?: (wallId: string) => void
+  onDoorSelect?: (doorId: string) => void
+  onWindowSelect?: (windowId: string) => void
+  onFixtureSelect?: (fixtureId: string) => void
   onRoomLabelOffsetChange?: (roomId: string, kind: LabelLineKind, offset: Point) => void
   onStairLabelOffsetChange?: (stairId: string, kind: LabelLineKind, offset: Point) => void
   onRoomResize?: (roomId: string, edge: RectEdge, positionFloorSvg: number) => void
+  onRoomMove?: (roomId: string, polygonFloor: Point[]) => void
+  onWallEndpointMove?: (wallId: string, endpoint: 'start' | 'end', positionFloor: Point) => void
+  onWallMove?: (wallId: string, start: Point, end: Point) => void
+  onDoorMove?: (doorId: string, position: Point) => void
+  onWindowEndpointMove?: (windowId: string, endpoint: 'start' | 'end', position: Point) => void
+  onWindowMove?: (windowId: string, start: Point, end: Point) => void
+  onFixtureMove?: (fixtureId: string, position: Point) => void
+  /** 追加配置モード時のクリック（floor 座標） */
+  placeMode?: boolean
+  onPlaceClick?: (positionFloor: Point) => void
 }
 
 function getBounds(floor: Floor) {
-  const allPoints = floor.rooms.flatMap((r) => r.polygon)
+  const allPoints = [
+    ...floor.rooms.flatMap((r) => r.polygon ?? []),
+    ...floor.walls.flatMap((w) => [w.start, w.end]),
+    ...floor.doors.map((d) => d.position),
+    ...floor.windows.flatMap((w) => [w.start, w.end]),
+    ...floor.fixtures.flatMap((f) => [
+      f.position,
+      { x: f.position.x + f.width, y: f.position.y + f.height },
+    ]),
+    ...floor.stairs.flatMap((s) => s.polygon ?? []),
+  ].filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+
+  if (allPoints.length === 0) {
+    return { minX: 0, minY: 0, maxX: 100, maxY: 100 }
+  }
+
   const xs = allPoints.map((p) => p.x)
   const ys = allPoints.map((p) => p.y)
-  return {
-    minX: Math.min(...xs),
-    maxX: Math.max(...xs),
-    minY: Math.min(...ys),
-    maxY: Math.max(...ys),
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || maxX - minX < 1) {
+    return { minX: 0, minY: 0, maxX: 100, maxY: 100 }
   }
+  if (!Number.isFinite(minY) || !Number.isFinite(maxY) || maxY - minY < 1) {
+    return { minX, minY: 0, maxX, maxY: 100 }
+  }
+
+  return { minX, minY, maxX, maxY }
 }
 
 export function FloorCanvas({
   floor,
-  padding = 20,
+  padding = 36,
   editable,
   mergeRoomIds,
   selectedRoomId,
   selectedStairId,
+  selectedWallId,
+  selectedDoorId,
+  selectedWindowId,
+  selectedFixtureId,
   onRoomSelect,
   onStairSelect,
+  onWallSelect,
+  onDoorSelect,
+  onWindowSelect,
+  onFixtureSelect,
   onRoomLabelOffsetChange,
   onStairLabelOffsetChange,
   onRoomResize,
+  onRoomMove,
+  onWallEndpointMove,
+  onWallMove,
+  onDoorMove,
+  onWindowEndpointMove,
+  onWindowMove,
+  onFixtureMove,
+  placeMode,
+  onPlaceClick,
 }: FloorCanvasProps) {
   const bounds = getBounds(floor)
   const width = bounds.maxX - bounds.minX + padding * 2
@@ -105,26 +167,48 @@ export function FloorCanvas({
     })),
   }
 
+  const floorOffset = { x: offsetX, y: offsetY }
+  const selectedWall =
+    selectedWallId != null ? transformedFloor.walls.find((w) => w.id === selectedWallId) : undefined
+  const selectedWindow =
+    selectedWindowId != null ? transformedFloor.windows.find((w) => w.id === selectedWindowId) : undefined
+  const selectedFixture =
+    selectedFixtureId != null
+      ? transformedFloor.fixtures.find((f) => f.id === selectedFixtureId)
+      : undefined
+
   return (
     <div className="floor-canvas-wrapper">
       <div className="floor-label">{floor.label}</div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''}`}
+        className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
         xmlns="http://www.w3.org/2000/svg"
       >
-        <rect x={0} y={0} width={width} height={height} fill={CANVAS.background} />
+        <rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill={CANVAS.background}
+        />
         <g className="rooms-layer">
           {transformedFloor.rooms.map((room) => (
             <RoomRenderer
               key={room.id}
               room={room}
+              floorOffset={floorOffset}
               selectable={!!onRoomSelect}
               editable={editable}
               renderLabels={false}
               selected={selectedRoomId === room.id}
               mergeSelected={mergeRoomIds?.includes(room.id) ?? false}
               onSelect={onRoomSelect}
+              onMove={
+                onRoomMove && editable
+                  ? (roomId, polygonFloor) => onRoomMove(roomId, polygonFloor)
+                  : undefined
+              }
             />
           ))}
         </g>
@@ -143,22 +227,61 @@ export function FloorCanvas({
         </g>
         <g className="fixtures-layer">
           {transformedFloor.fixtures.map((fixture) => (
-            <FixtureRenderer key={fixture.id} fixture={fixture} />
+            <g key={fixture.id} data-fixture-id={fixture.id}>
+              <FixtureRenderer fixture={fixture} />
+              {onFixtureSelect && (
+                <rect
+                  x={fixture.position.x}
+                  y={fixture.position.y}
+                  width={fixture.width}
+                  height={fixture.height}
+                  fill="transparent"
+                  className="fixture-hit"
+                  style={{ cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onFixtureSelect(fixture.id)
+                  }}
+                />
+              )}
+            </g>
           ))}
         </g>
         <g className="walls-layer">
           {transformedFloor.walls.map((wall) => (
-            <WallRenderer key={wall.id} wall={wall} />
-          ))}
-        </g>
-        <g className="doors-layer">
-          {transformedFloor.doors.map((door) => (
-            <DoorRenderer key={door.id} door={door} />
+            <WallRenderer
+              key={wall.id}
+              wall={wall}
+              doors={transformedFloor.doors}
+              windows={transformedFloor.windows}
+              selectable={!!onWallSelect}
+              selected={selectedWallId === wall.id}
+              onSelect={onWallSelect}
+            />
           ))}
         </g>
         <g className="windows-layer">
           {transformedFloor.windows.map((win) => (
-            <WindowRenderer key={win.id} window={win} />
+            <WindowRenderer
+              key={win.id}
+              window={win}
+              selected={selectedWindowId === win.id}
+              selectable={!!onWindowSelect}
+              onSelect={onWindowSelect}
+            />
+          ))}
+        </g>
+        <g className="doors-layer">
+          {transformedFloor.doors.map((door) => (
+            <DoorRenderer
+              key={door.id}
+              door={door}
+              selected={selectedDoorId === door.id}
+              editable={editable}
+              floorOffset={floorOffset}
+              onSelect={onDoorSelect}
+              onMove={onDoorMove ? (pos) => onDoorMove(door.id, pos) : undefined}
+            />
           ))}
         </g>
         <g className="labels-layer">
@@ -210,11 +333,63 @@ export function FloorCanvas({
           <g className="resize-handles-layer">
             <RoomResizeHandles
               rect={selectedRoomRectCanvas}
-              floorOffset={{ x: offsetX, y: offsetY }}
+              floorOffset={floorOffset}
               onResize={(edge, positionFloorSvg) => onRoomResize(selectedRoomId, edge, positionFloorSvg)}
             />
           </g>
         )}
+        {editable && selectedWall && onWallEndpointMove && onWallMove && (
+          <g className="edit-handles-layer">
+            <WallEditHandles
+              wall={selectedWall}
+              floorOffset={floorOffset}
+              onEndpointMove={(endpoint, pos) => onWallEndpointMove(selectedWall.id, endpoint, pos)}
+              onWallMove={(start, end) => onWallMove(selectedWall.id, start, end)}
+            />
+          </g>
+        )}
+        {editable && selectedWindow && onWindowEndpointMove && onWindowMove && (
+          <g className="edit-handles-layer">
+            <WindowEditHandles
+              window={selectedWindow}
+              floorOffset={floorOffset}
+              onEndpointMove={(endpoint, pos) => onWindowEndpointMove(selectedWindow.id, endpoint, pos)}
+              onWindowMove={(start, end) => onWindowMove(selectedWindow.id, start, end)}
+            />
+          </g>
+        )}
+        {editable && selectedFixture && onFixtureMove && (
+          <g className="edit-handles-layer">
+            <FixtureEditHandles
+              fixture={selectedFixture}
+              floorOffset={floorOffset}
+              onMove={(pos) => onFixtureMove(selectedFixture.id, pos)}
+            />
+          </g>
+        )}
+        {placeMode && onPlaceClick && (
+          <rect
+            className="place-overlay"
+            data-no-pan=""
+            x={0}
+            y={0}
+            width={width}
+            height={height}
+            fill="transparent"
+            style={{ cursor: 'crosshair', pointerEvents: 'all' }}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return
+              const svg = e.currentTarget.ownerSVGElement
+              if (!svg) return
+              const canvas = clientToSvg(svg, e.clientX, e.clientY)
+              if (!canvas) return
+              e.stopPropagation()
+              e.preventDefault()
+              onPlaceClick(canvasToFloor(canvas, floorOffset))
+            }}
+          />
+        )}
+        <NorthArrow x={width - 28} y={32} size={26} />
       </svg>
     </div>
   )
