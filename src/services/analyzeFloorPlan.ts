@@ -13,6 +13,8 @@ import {
 
   GEMINI_MODEL_FLASH,
 
+  GEMINI_MODEL_FLASH_THINKING,
+
   GEMINI_MODEL_PRO,
 
   normalizeApiKey,
@@ -153,7 +155,13 @@ function fileToBase64(file: File): Promise<string> {
 
 
 
-function buildGenerationConfig(quality: AnalysisQuality, model: string) {
+function buildGenerationConfig(_quality: AnalysisQuality, model: string) {
+
+  // Pro は思考トークンも出力上限に含まれる（実測: 図面1枚で思考12,000トークン）。
+
+  // 上限が足りないと JSON が途中で切れるため、Flash 以外は余裕を持たせる。
+
+  const isFlash = model.includes('flash')
 
   const config: Record<string, unknown> = {
 
@@ -161,25 +169,47 @@ function buildGenerationConfig(quality: AnalysisQuality, model: string) {
 
     temperature: 0,
 
-    maxOutputTokens: 32768,
+    maxOutputTokens: isFlash ? 32768 : 65536,
 
   }
 
 
 
+  // gemini-3.5-flash に thinkingBudget を与えると、JSON が最後まで出力されず
+
+  // 途中で打ち切られる（同じ図面で再現。budget 0 では毎回完走）。
+
+  // 思考を使いたい場合は thinking が既定で有効な GEMINI_MODEL_FLASH_THINKING を使う。
+
   if (model === GEMINI_MODEL_FLASH) {
 
-    config.thinkingConfig = {
-
-      thinkingBudget: quality === 'high' ? 8192 : 2048,
-
-    }
+    config.thinkingConfig = { thinkingBudget: 0 }
 
   }
 
 
 
   return config
+
+}
+
+
+
+/** そのまま JSON.parse できるか（できなければ = 応答が途中で切れて修復された） */
+
+function isCompleteJson(text: string): boolean {
+
+  try {
+
+    JSON.parse(text.trim())
+
+    return true
+
+  } catch {
+
+    return false
+
+  }
 
 }
 
@@ -195,7 +225,7 @@ async function requestFloorPlan(
 
   quality: AnalysisQuality
 
-): Promise<FloorPlan> {
+): Promise<{ floorPlan: FloorPlan; truncated: boolean }> {
 
   const maxDimension =
 
@@ -261,6 +291,14 @@ async function requestFloorPlan(
 
     }
 
+    // 500/503 はモデル側の一時的な混雑。別モデルへ切り替えれば通ることが多い
+
+    if (response.status >= 500) {
+
+      ;(error as Error & { modelBusy?: boolean }).modelBusy = true
+
+    }
+
     throw error
 
   }
@@ -299,17 +337,9 @@ async function requestFloorPlan(
 
 
 
-  if (finishReason === 'MAX_TOKENS') {
+  // 応答が途中で切れていても、parseAiJsonContent が閉じ括弧を補って復元できることが多い。
 
-    throw new Error(
-
-      'AIの応答が途中で切れました。画像を1階分にクロップするか、高精度モードをオフにして再試行してください。'
-
-    )
-
-  }
-
-
+  // 先に復元を試し、間取データが取れたら「一部欠けているかも」と伝えたうえで使う。
 
   let parsed: FloorPlan
 
@@ -318,6 +348,16 @@ async function requestFloorPlan(
     parsed = parseAiJsonContent(content) as FloorPlan
 
   } catch {
+
+    if (finishReason === 'MAX_TOKENS') {
+
+      throw new Error(
+
+        'AIの応答が長すぎて途中で切れました。画像を1階分にクロップして再試行してください。'
+
+      )
+
+    }
 
     throw new Error(
 
@@ -331,9 +371,13 @@ async function requestFloorPlan(
 
 
 
+  const truncated = finishReason === 'MAX_TOKENS' || !isCompleteJson(content)
+
+
+
   try {
 
-    return normalizeFloorPlan(parsed)
+    return { floorPlan: normalizeFloorPlan(parsed), truncated }
 
   } catch (error) {
 
@@ -355,13 +399,13 @@ async function analyzeWithGemini(
 
   quality: AnalysisQuality
 
-): Promise<{ floorPlan: FloorPlan; modelUsed: string }> {
+): Promise<{ floorPlan: FloorPlan; modelUsed: string; truncated: boolean }> {
 
   const models =
 
     quality === 'high'
 
-      ? [GEMINI_MODEL_PRO, GEMINI_MODEL_FLASH, 'gemini-2.5-flash']
+      ? [GEMINI_MODEL_PRO, GEMINI_MODEL_FLASH_THINKING, GEMINI_MODEL_FLASH, 'gemini-2.5-flash']
 
       : [GEMINI_MODEL_FLASH, 'gemini-2.5-flash']
 
@@ -375,9 +419,9 @@ async function analyzeWithGemini(
 
     try {
 
-      const floorPlan = await requestFloorPlan(file, apiKey, model, quality)
+      const { floorPlan, truncated } = await requestFloorPlan(file, apiKey, model, quality)
 
-      return { floorPlan, modelUsed: model }
+      return { floorPlan, modelUsed: model, truncated }
 
     } catch (error) {
 
@@ -390,6 +434,8 @@ async function analyzeWithGemini(
         i < models.length - 1 &&
 
         ((err as Error & { modelUnavailable?: boolean }).modelUnavailable === true ||
+
+          (err as Error & { modelBusy?: boolean }).modelBusy === true ||
 
           err.message.includes('JSONとして解析'))
 
@@ -465,7 +511,7 @@ export async function analyzeFloorPlan(
 
 
 
-  const { floorPlan, modelUsed } = await analyzeWithGemini(
+  const { floorPlan, modelUsed, truncated } = await analyzeWithGemini(
 
     file,
 
@@ -484,6 +530,12 @@ export async function analyzeFloorPlan(
     ? `高精度モード（${modelUsed}）で解析しました`
 
     : `標準モード（${modelUsed}）で解析しました`,
+
+    ...(truncated
+
+      ? ['AIの応答が途中で切れたため、部屋や扉が一部欠けている可能性があります']
+
+      : []),
 
     '図面の縮尺・部屋数・形状は手動で調整が必要な場合があります',
 

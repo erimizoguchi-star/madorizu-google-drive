@@ -430,6 +430,8 @@ export function addWallSegment(
     start: startPt,
     end: endPt,
     exterior: options?.exterior ?? false,
+    // 部屋を編集しても消えないようにする（壁は通常、部屋の形から作り直される）
+    manual: true,
   }
   const next = updateFloor(floorPlan, floorId, (f) => ({
     ...f,

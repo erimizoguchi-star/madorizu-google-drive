@@ -1,9 +1,18 @@
-/** @see https://ai.google.dev/gemini-api/docs/deprecations */
+/**
+ * @see https://ai.google.dev/gemini-api/docs/deprecations
+ * モデル名は実在するものだけを指定する（存在しない名前は 404 になり、
+ * フォールバックで1往復ぶん時間とコストを無駄にする）。
+ * 利用可能な一覧は `npm run test-api-key` または GET /v1beta/models で確認できる。
+ */
 export const GEMINI_MODEL_FLASH = 'gemini-3.5-flash'
-export const GEMINI_MODEL_PRO = 'gemini-3.5-pro'
+/** 高精度モード用。Flash より読み取りは丁寧だが 1分以上かかり、混雑時は 503 になる */
+export const GEMINI_MODEL_PRO = 'gemini-3.1-pro-preview'
+/** Pro が混雑しているときの高精度側フォールバック（thinking 既定で精度が高い） */
+export const GEMINI_MODEL_FLASH_THINKING = 'gemini-3.6-flash'
 const GEMINI_MODEL = GEMINI_MODEL_FLASH
 const MAX_RETRIES = 3
-const REQUEST_TIMEOUT_MS = 180_000
+/** 高精度モードの Pro は 1 図面で 2 分前後かかる（実測 121〜125 秒）ため余裕を見る */
+const REQUEST_TIMEOUT_MS = 300_000
 
 export function normalizeApiKey(key: string): string {
   return key.trim().replace(/^["']|["']$/g, '')
@@ -73,6 +82,16 @@ export function parseGeminiError(status: number, body: string): string {
         .filter(Boolean)
         .join('\n')
     }
+    if (status === 503 || status === 500) {
+      return [
+        'Gemini のモデルが混雑しています（一時的なエラー）。',
+        '・少し待ってから再試行してください',
+        '・高精度モードで起きた場合は、標準モードなら通ることがあります',
+        msg ? `（詳細: ${msg}）` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    }
     if (msg) return msg
   } catch {
     // ignore
@@ -99,7 +118,7 @@ export async function fetchGemini(
   } catch (error) {
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       throw new Error(
-        'AI解析がタイムアウトしました（3分）。画像サイズを小さくするか、しばらく待ってから再試行してください。'
+        'AI解析がタイムアウトしました（5分）。画像サイズを小さくするか、しばらく待ってから再試行してください。'
       )
     }
     throw new Error(
@@ -108,7 +127,14 @@ export async function fetchGemini(
   }
 }
 
-/** 429 のとき指数バックオフで自動リトライ */
+/**
+ * 429（レート制限）と 5xx（モデル混雑）のとき指数バックオフで自動リトライ。
+ * 高精度モードの Pro モデルは混雑時に 503 を返すことが多く、待てば通る。
+ */
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
 export async function fetchGeminiWithRetry(
   path: string,
   options: RequestInit & { apiKey?: string } = {}
@@ -117,7 +143,7 @@ export async function fetchGeminiWithRetry(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const response = await fetchGemini(path, options)
-    if (response.status !== 429) {
+    if (!isRetryableStatus(response.status)) {
       return response
     }
     lastResponse = response

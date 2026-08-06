@@ -315,11 +315,29 @@ function sanitizeWindow(win: Window, index: number, useMm: boolean): Window | nu
   }
 }
 
-function sanitizeFixture(fixture: Fixture, index: number, useMm: boolean): Fixture | null {
-  const position = toPoint(fixture.position)
+/**
+ * position 欠落時、AI がよく使う {x, y} 形式から復元する。
+ * 高さも height / depth のどちらでも受ける。
+ */
+function resolveFixtureBox(
+  fixture: Fixture & Record<string, unknown>
+): { position: Point; widthMm: number; heightMm: number } | null {
+  const position =
+    toPoint(fixture.position) ??
+    (typeof fixture.x === 'number' && typeof fixture.y === 'number'
+      ? { x: fixture.x, y: fixture.y }
+      : null)
   if (!position) return null
+
   const widthMm = toNumber(fixture.width, 600)
-  const heightMm = toNumber(fixture.height, 400)
+  const rawHeight = fixture.height ?? fixture.depth
+  return { position, widthMm, heightMm: toNumber(rawHeight, 400) }
+}
+
+function sanitizeFixture(fixture: Fixture, index: number, useMm: boolean): Fixture | null {
+  const box = resolveFixtureBox(fixture as Fixture & Record<string, unknown>)
+  if (!box) return null
+  const { position, widthMm, heightMm } = box
   return {
     ...fixture,
     id: fixture.id || `fixture-${index}`,
@@ -329,6 +347,74 @@ function sanitizeFixture(fixture: Fixture, index: number, useMm: boolean): Fixtu
     height: useMm ? mmToSvgUnits(snapMm(heightMm)) : heightMm,
     angle: fixture.angle != null ? toNumber(fixture.angle, 0) : undefined,
   }
+}
+
+const DOOR_ANGLE_SNAP_TOLERANCE_SVG = mmToSvgUnits(400)
+const SEGMENT_EPS = 0.01
+
+function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lenSq = dx * dx + dy * dy
+  if (lenSq < SEGMENT_EPS) return Math.hypot(p.x - a.x, p.y - a.y)
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t))
+}
+
+/**
+ * 扉を、実際に乗っている壁に合わせて整える。
+ *
+ * AI の出力は次のように崩れることが多く、そのままだと戸が壁を突き抜けたり、
+ * 壁の外へはみ出して描画される（実図面で 7枚中 2枚がはみ出していた）。
+ * - 水平な壁の扉に angle 90 / 270 を返す
+ * - position は壁の上にあるが、そこから伸ばす向きが逆で壁の端からはみ出す
+ * - 壁の線からわずかに浮いていて、壁に開口が空かない
+ */
+function fitDoorsToWalls(floor: Floor): Floor {
+  if (floor.doors.length === 0 || floor.walls.length === 0) return floor
+
+  const doors = floor.doors.map((door) => {
+    let nearest: { distance: number; wall: Wall; horizontal: boolean } | null = null
+
+    for (const wall of floor.walls) {
+      const dx = Math.abs(wall.end.x - wall.start.x)
+      const dy = Math.abs(wall.end.y - wall.start.y)
+      if (dx < SEGMENT_EPS && dy < SEGMENT_EPS) continue
+      const distance = distanceToSegment(door.position, wall.start, wall.end)
+      if (!nearest || distance < nearest.distance) {
+        nearest = { distance, wall, horizontal: dx >= dy }
+      }
+    }
+
+    if (!nearest || nearest.distance > DOOR_ANGLE_SNAP_TOLERANCE_SVG) return door
+
+    const { wall, horizontal } = nearest
+    const axis = horizontal ? 'x' : 'y'
+    const cross = horizontal ? 'y' : 'x'
+    const lo = Math.min(wall.start[axis], wall.end[axis])
+    const hi = Math.max(wall.start[axis], wall.end[axis])
+    const span = hi - lo
+    if (span < SEGMENT_EPS) return door
+
+    // 壁より長い扉は壁に収まる幅まで詰める
+    const width = Math.min(door.width, span)
+    let start = door.position[axis]
+
+    if (start + width > hi) {
+      // 逆向きに伸ばせば収まるなら、そちらが AI の意図した位置
+      start = start - width >= lo ? start - width : hi - width
+    }
+    if (start < lo) start = lo
+
+    const position = horizontal
+      ? { x: start, y: wall.start[cross] }
+      : { x: wall.start[cross], y: start }
+
+    return { ...door, position, width, angle: horizontal ? 0 : 90 }
+  })
+
+  return { ...floor, doors }
 }
 
 const STAIR_LAYOUTS: StairLayout[] = ['straight', 'turn-right', 'turn-left']
@@ -376,6 +462,8 @@ function sanitizeFloor(floor: Floor, index: number, useMm: boolean): Floor {
     id: floor.id ?? `floor-${index}`,
     name: floor.name ?? `${index + 1}F`,
     label: floor.label ?? `${index + 1}階`,
+    // 保存した間取図を読み直したとき、消した壁が復活しないよう引き継ぐ
+    ...(floor.hiddenWalls ? { hiddenWalls: floor.hiddenWalls } : {}),
     rooms,
     walls: (floor.walls ?? [])
       .map((wall, i) => sanitizeWall(wall as Wall, i, useMm))
@@ -394,7 +482,7 @@ function sanitizeFloor(floor: Floor, index: number, useMm: boolean): Floor {
       .filter((stair): stair is Stair => stair != null),
   })
 
-  return closeCoverageGaps(draft)
+  return fitDoorsToWalls(closeCoverageGaps(draft))
 }
 
 export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {

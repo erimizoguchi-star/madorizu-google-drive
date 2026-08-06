@@ -25,6 +25,12 @@ export function isValidFixtureType(value: unknown): value is FixtureType {
   return FIXTURE_TYPE_OPTIONS.some((o) => o.value === value)
 }
 
+/** 設備の回転角を 0 / 90 / 180 / 270 のいずれかに丸める */
+export function normalizeFixtureAngle(angle: number | undefined): number {
+  if (typeof angle !== 'number' || !Number.isFinite(angle)) return 0
+  return ((Math.round(angle / 90) % 4) + 4) % 4 * 90
+}
+
 export function defaultFixtureSizeMm(type: FixtureType): { widthMm: number; heightMm: number } {
   const opt = FIXTURE_TYPE_OPTIONS.find((o) => o.value === type)
   return {

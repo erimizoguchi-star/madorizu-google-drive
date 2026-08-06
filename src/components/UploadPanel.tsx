@@ -286,6 +286,9 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
           </label>
           <p className="quality-hint">
             精度を上げるコツ: 寸法線が読める図面、余白の少ないクロップ、PDFは1階ずつ。生成後は編集モードで微調整してください。
+            <br />
+            <strong>1/50 の平面詳細図など、文字や寸法が細かい図面は「高精度解析」を使ってください。</strong>
+            標準モードでは寸法を読みきれず、部屋の大きさがずれます（実測）。
           </p>
         </>
       )}

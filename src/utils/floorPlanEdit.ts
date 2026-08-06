@@ -1,18 +1,28 @@
-import type { Door, DoorKind, Fixture, FixtureType, FloorPlan, Point, Room, RoomFillPattern, Stair, StairLayout, StairOrientation, Wall, Window, WindowKind } from '../types/floorPlan'
+import type { Door, DoorKind, Fixture, FixtureType, FloorPlan, HiddenWall, Point, Room, RoomFillPattern, Stair, StairLayout, StairOrientation, Wall, Window, WindowKind } from '../types/floorPlan'
 import { orientationToDirection } from '../constants/stairOptions'
 import { doorKindLabel } from '../constants/doorOptions'
 import { windowKindLabel } from '../constants/windowOptions'
 import { defaultFixtureSizeMm, fixtureTypeLabel } from '../constants/fixtureOptions'
-import { STAIR_DEFAULT_WIDTH_MM, withStairWidth } from './resizeStair'
+import {
+  STAIR_DEFAULT_WIDTH_MM,
+  translateStair,
+  withStairLength,
+  withStairWidth,
+} from './resizeStair'
 import { isAreaJoHiddenByType } from '../constants/roomTypes'
 import type { LabelLineKind } from '../renderer/roomLabelLayout'
 import { mmToSvgUnits, snapSvgToMmGrid, type RectEdge } from './roomGeometry'
 import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom'
-import { syncFloorWalls } from './ensureExteriorWalls'
+import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
   additive?: boolean
+  /**
+   * 合成用の選択リストを触らずに、詳細パネルの対象だけ切り替える。
+   * 合成リストのチェックボックス側が選択を管理しているときに使う。
+   */
+  keepMergeSelection?: boolean
 }
 
 export type SelectedElementRef =
@@ -222,6 +232,9 @@ export function updateStair(
     orientation?: StairOrientation | null
     direction?: 'up' | 'down'
     widthMm?: number
+    lengthMm?: number
+    /** 平行移動（SVG単位） */
+    moveBy?: Point
   } & Pick<LabelOffsetPatch, 'nameLabelOffset'>
 ): FloorPlan {
   const found = findStair(floorPlan, ref)
@@ -253,10 +266,36 @@ export function updateStair(
         } else if (patch.layout !== undefined || patch.orientation !== undefined || patch.orientation === null) {
           updated = withStairWidth(updated, updated.widthMm ?? STAIR_DEFAULT_WIDTH_MM)
         }
+        if (typeof patch.lengthMm === 'number' && patch.lengthMm > 0) {
+          updated = withStairLength(updated, patch.lengthMm)
+        }
+        if (patch.moveBy) {
+          updated = translateStair(updated, patch.moveBy.x, patch.moveBy.y)
+        }
         updated = applyLabelOffsetPatch(updated, patch)
         return updated
       }),
     }
+  })
+
+  return { ...floorPlan, floors }
+}
+
+export function deleteStair(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; stairId: string }
+): FloorPlan {
+  const found = findStair(floorPlan, ref)
+  if (!found) return floorPlan
+
+  const floors = floorPlan.floors.map((floor, fi) => {
+    if (fi !== found.floorIndex) return floor
+    const next = {
+      ...floor,
+      stairs: floor.stairs.filter((_, si) => si !== found.stairIndex),
+    }
+    // 階段があった場所が空白にならないよう、壁と部屋の充填をやり直す
+    return next.rooms.length > 0 ? syncFloorWalls(next) : next
   })
 
   return { ...floorPlan, floors }
@@ -564,10 +603,22 @@ export function deleteWall(floorPlan: FloorPlan, ref: { floorId: string; wallId:
 
   const floors = floorPlan.floors.map((floor, fi) => {
     if (fi !== found.floorIndex) return floor
-    return {
+
+    const wall = floor.walls[found.wallIndex]
+    const next = {
       ...floor,
       walls: floor.walls.filter((_, wi) => wi !== found.wallIndex),
     }
+    // 手動で足した壁は消せば終わりだが、自動生成の壁は「消したこと」を覚えないと
+    // 部屋を動かしたときに作り直されて復活してしまう
+    if (!wall || wall.manual) return next
+
+    const pair = findWallPairKey(floor, wall)
+    const hidden: HiddenWall = pair
+      ? { pair }
+      : { start: { ...wall.start }, end: { ...wall.end } }
+
+    return { ...next, hiddenWalls: [...(floor.hiddenWalls ?? []), hidden] }
   })
 
   return { ...floorPlan, floors }
@@ -603,8 +654,9 @@ export function deleteFixture(floorPlan: FloorPlan, ref: { floorId: string; fixt
   return { ...floorPlan, floors }
 }
 
-export function isDeletableSelection(ref: SelectedElementRef): boolean {
-  return ref.kind !== 'stair'
+/** 選択できる要素はすべて削除できる（階段も対象） */
+export function isDeletableSelection(_ref: SelectedElementRef): boolean {
+  return true
 }
 
 export function deleteSelectedElement(floorPlan: FloorPlan, ref: SelectedElementRef): FloorPlan {
@@ -620,7 +672,7 @@ export function deleteSelectedElement(floorPlan: FloorPlan, ref: SelectedElement
     case 'fixture':
       return deleteFixture(floorPlan, ref)
     case 'stair':
-      return floorPlan
+      return deleteStair(floorPlan, ref)
   }
 }
 

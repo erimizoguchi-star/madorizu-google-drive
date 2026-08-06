@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { ROOM_TYPE_OPTIONS, isAreaJoHiddenByType } from '../constants/roomTypes'
 import { LABEL } from '../renderer/styles'
 import { STAIR_LAYOUT_OPTIONS, STAIR_ORIENTATION_OPTIONS } from '../constants/stairOptions'
-import { STAIR_DEFAULT_WIDTH_MM } from '../utils/resizeStair'
+import { getStairLengthMm, STAIR_DEFAULT_WIDTH_MM } from '../utils/resizeStair'
 import { resolveStairLayout, resolveStairOrientation, getStairBounds } from '../renderer/stairGraphics'
 import {
   getDefaultFillColor,
@@ -22,6 +22,7 @@ import {
   deleteDoor,
   deleteWindow,
   deleteFixture,
+  deleteStair,
   elementRefToKey,
   findRoom,
   findStair,
@@ -53,8 +54,10 @@ import {
   windowKindLabel,
 } from '../constants/windowOptions'
 import {
+  defaultFixtureSizeMm,
   FIXTURE_TYPE_OPTIONS,
   fixtureTypeLabel,
+  normalizeFixtureAngle,
 } from '../constants/fixtureOptions'
 import {
   addRoomBesideExisting,
@@ -180,14 +183,16 @@ export function RoomEditor({
       const next = mergeRoomIds.roomIds.filter((id) => id !== roomId)
       onMergeRoomIdsChange(next.length > 0 ? { floorId, roomIds: next } : null)
       if (selected?.kind === 'room' && selected.roomId === roomId && next.length > 0) {
-        onSelect({ kind: 'room', floorId, roomId: next[0] })
+        onSelect({ kind: 'room', floorId, roomId: next[0] }, { keepMergeSelection: true })
       }
       return
     }
     const prev = mergeRoomIds?.floorId === floorId ? mergeRoomIds.roomIds : []
     const next = [...new Set([...prev, roomId])]
     onMergeRoomIdsChange({ floorId, roomIds: next })
-    onSelect({ kind: 'room', floorId, roomId })
+    // keepMergeSelection を付けないと、選択が「クリックした1部屋だけ」に戻され、
+    // チェックを2つ以上入れられなくなる（合成ボタンが押せない）
+    onSelect({ kind: 'room', floorId, roomId }, { keepMergeSelection: true })
   }
 
   const handleMergeRooms = () => {
@@ -223,6 +228,13 @@ export function RoomEditor({
   const handleStairField = (patch: Parameters<typeof updateStair>[2]) => {
     if (!selected || selected.kind !== 'stair') return
     applyPlan((prev) => updateStair(prev, selected, patch))
+  }
+
+  const handleDeleteStair = () => {
+    if (!selected || selected.kind !== 'stair' || !currentStair) return
+    if (!confirm('この階段を削除しますか？')) return
+    applyPlan((prev) => deleteStair(prev, selected))
+    onSelect(null)
   }
 
   const handleRoomOffset = (kind: LabelLineKind, offset: Point) => {
@@ -934,6 +946,57 @@ export function RoomEditor({
           </div>
 
           <div className="editor-field">
+            <label htmlFor="stair-length">長さ（mm）</label>
+            <input
+              id="stair-length"
+              type="number"
+              min={900}
+              max={9000}
+              step={50}
+              value={getStairLengthMm(currentStair.stair)}
+              onChange={(e) => {
+                const lengthMm = Number(e.target.value)
+                if (!Number.isFinite(lengthMm) || lengthMm <= 0) return
+                handleStairField({ lengthMm })
+              }}
+            />
+            <p className="editor-field-hint">上り方向の長さです。上り始め側は動きません。</p>
+          </div>
+
+          <div className="editor-nudge-row">
+            <span className="editor-offset-label">位置（50mm）</span>
+            <button
+              type="button"
+              className="btn editor-nudge-btn"
+              onClick={() => handleStairField({ moveBy: { x: 0, y: -mmToSvgUnits(50) } })}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="btn editor-nudge-btn"
+              onClick={() => handleStairField({ moveBy: { x: -mmToSvgUnits(50), y: 0 } })}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              className="btn editor-nudge-btn"
+              onClick={() => handleStairField({ moveBy: { x: mmToSvgUnits(50), y: 0 } })}
+            >
+              →
+            </button>
+            <button
+              type="button"
+              className="btn editor-nudge-btn"
+              onClick={() => handleStairField({ moveBy: { x: 0, y: mmToSvgUnits(50) } })}
+            >
+              ↓
+            </button>
+          </div>
+          <p className="editor-offset-hint">図面上で階段をドラッグしても移動できます。</p>
+
+          <div className="editor-field">
             <label htmlFor="stair-layout">段の形状</label>
             <select
               id="stair-layout"
@@ -1024,6 +1087,10 @@ export function RoomEditor({
               onReset={() => handleStairOffset({ x: 0, y: 0 })}
             />
           </div>
+
+          <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteStair}>
+            この階段を削除
+          </button>
         </div>
       )}
 
@@ -1035,6 +1102,10 @@ export function RoomEditor({
           </p>
           <p className="editor-offset-hint">
             端点（●）で長さ変更、中央（○）で平行移動。外壁を動かすと接している部屋の形状も追従します。
+          </p>
+          <p className="editor-field-hint">
+            壁は部屋の形から自動生成されますが、<strong>手動で追加・調整した壁は作り直されず残ります</strong>。
+            自動生成の壁は、部屋を移動・変形・合成すると引き直されます。
           </p>
           <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteWall}>
             この壁を削除
@@ -1187,7 +1258,111 @@ export function RoomEditor({
             </select>
           </div>
           <p className="editor-field-hint">{fixtureTypeLabel(currentFixture.fixture.type)}</p>
-          <p className="editor-offset-hint">枠をドラッグして設備の位置を調整できます。</p>
+
+          <div className="editor-field-row">
+            <div className="editor-field">
+              <label htmlFor="fixture-width">幅（mm）</label>
+              <input
+                id="fixture-width"
+                type="number"
+                step={10}
+                min={100}
+                max={6000}
+                value={Math.round(svgUnitsToMm(currentFixture.fixture.width))}
+                onChange={(e) => {
+                  const widthMm = parseInt(e.target.value, 10)
+                  if (Number.isNaN(widthMm) || widthMm <= 0) return
+                  applyPlan((prev) => updateFixture(prev, selected, { widthMm }))
+                }}
+              />
+            </div>
+            <div className="editor-field">
+              <label htmlFor="fixture-height">奥行き（mm）</label>
+              <input
+                id="fixture-height"
+                type="number"
+                step={10}
+                min={100}
+                max={6000}
+                value={Math.round(svgUnitsToMm(currentFixture.fixture.height))}
+                onChange={(e) => {
+                  const heightMm = parseInt(e.target.value, 10)
+                  if (Number.isNaN(heightMm) || heightMm <= 0) return
+                  applyPlan((prev) => updateFixture(prev, selected, { heightMm }))
+                }}
+              />
+            </div>
+          </div>
+          <p className="editor-field-hint">
+            図面の上下方向が「奥行き」です。標準は{' '}
+            {defaultFixtureSizeMm(currentFixture.fixture.type).widthMm} ×{' '}
+            {defaultFixtureSizeMm(currentFixture.fixture.type).heightMm} mm。
+          </p>
+
+          <div className="editor-field">
+            <label htmlFor="fixture-angle">向き（回転）</label>
+            <select
+              id="fixture-angle"
+              value={normalizeFixtureAngle(currentFixture.fixture.angle)}
+              onChange={(e) =>
+                applyPlan((prev) =>
+                  updateFixture(prev, selected, { angle: Number(e.target.value) })
+                )
+              }
+            >
+              <option value={0}>0°（そのまま）</option>
+              <option value={90}>90°（右へ）</option>
+              <option value={180}>180°（上下反転）</option>
+              <option value={270}>270°（左へ）</option>
+            </select>
+          </div>
+          <div className="editor-nudge-row">
+            <button
+              type="button"
+              className="btn editor-nudge-btn"
+              onClick={() =>
+                applyPlan((prev) =>
+                  updateFixture(prev, selected, {
+                    angle: (normalizeFixtureAngle(currentFixture.fixture.angle) + 270) % 360,
+                  })
+                )
+              }
+            >
+              ↺ 左に90°
+            </button>
+            <button
+              type="button"
+              className="btn editor-nudge-btn"
+              onClick={() =>
+                applyPlan((prev) =>
+                  updateFixture(prev, selected, {
+                    angle: (normalizeFixtureAngle(currentFixture.fixture.angle) + 90) % 360,
+                  })
+                )
+              }
+            >
+              ↻ 右に90°
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn editor-nudge-btn"
+            onClick={() => {
+              const size = defaultFixtureSizeMm(currentFixture.fixture.type)
+              applyPlan((prev) =>
+                updateFixture(prev, selected, {
+                  widthMm: size.widthMm,
+                  heightMm: size.heightMm,
+                })
+              )
+            }}
+          >
+            標準サイズに戻す
+          </button>
+
+          <p className="editor-offset-hint">
+            枠をドラッグで移動、四隅の■をドラッグで大きさを変更できます（10mm 刻み）。
+          </p>
           <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteFixture}>
             この設備を削除
           </button>

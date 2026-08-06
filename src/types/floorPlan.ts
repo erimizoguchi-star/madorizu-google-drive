@@ -65,6 +65,12 @@ export interface Wall {
   end: Point
   /** 外壁かどうか */
   exterior?: boolean
+  /**
+   * 手動で追加・編集した壁。
+   * 壁は通常、部屋の形から自動生成され、部屋を編集するたび作り直される。
+   * このフラグが立っている壁は作り直しの対象外にして、編集内容を残す。
+   */
+  manual?: boolean
 }
 
 /** 片開き / 両開き / 片引き / 引き違い / 折れ戸 / 両折れ / 引き込み / 親子戸 / 開口 */
@@ -151,10 +157,25 @@ export interface Stair {
   nameLabelOffset?: Point
 }
 
+/**
+ * ユーザーが削除した壁の記録。
+ * 壁は部屋の形から作り直されるため、消しただけでは部屋を動かすと復活してしまう。
+ * 内壁は「接する2部屋の組」で覚えるので、部屋を動かしても消えたままにできる。
+ */
+export interface HiddenWall {
+  /** 内壁: 接する2つの部屋（階段）のIDを並べたキー */
+  pair?: string
+  /** 外壁など、部屋の組で特定できないものは座標で覚える */
+  start?: Point
+  end?: Point
+}
+
 export interface Floor {
   id: string
   name: string
   label: string
+  /** 削除済みの壁（自動生成で復活させない） */
+  hiddenWalls?: HiddenWall[]
   rooms: Room[]
   walls: Wall[]
   doors: Door[]
