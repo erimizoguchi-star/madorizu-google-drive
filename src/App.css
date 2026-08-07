@@ -590,6 +590,7 @@
 }
 
 .floors-container {
+  position: relative;
   display: flex;
   flex-direction: row;
   gap: 3rem;
@@ -1018,6 +1019,219 @@
   width: 100%;
   font-size: 0.75rem;
   margin-top: 0.15rem;
+}
+
+/* 編集画面を広げるモード（左パネルとアップロード画像を隠す） */
+.edit-space-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.wide-edit-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+}
+
+.wide-edit-btn.active {
+  background: #8C7A5B;
+  color: #fff;
+}
+
+.edit-space-hint {
+  font-size: 0.75rem;
+  color: #6B6459;
+}
+
+.sidebar.sidebar-collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border-right: none;
+  overflow: hidden;
+}
+
+.app-wide-edit .preview-section {
+  padding: 0.75rem 1rem;
+}
+
+.app-wide-edit .floor-plan-zoom .zoom-viewport {
+  max-height: min(calc(100vh - 11rem), 1800px);
+}
+
+/* 保存した間取図 */
+.saved-plans-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.saved-plan-name {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.saved-plan-message {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #6B6459;
+}
+
+.saved-plan-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.saved-plan-list li {
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.saved-plan-list li.current {
+  border-color: #8C7A5B;
+  background: #FAF7F2;
+}
+
+.saved-plan-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.saved-plan-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.saved-plan-date {
+  font-size: 0.7rem;
+  color: #6B6459;
+}
+
+.saved-plan-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.saved-plan-actions .btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+/* アップロードした平面図を間取図に重ねて表示する */
+.overlay-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: #FAF7F2;
+  border: 1px solid #E8E4DC;
+  border-radius: 8px;
+}
+
+.overlay-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.overlay-toggle.active {
+  font-weight: 600;
+}
+
+.overlay-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.overlay-field input[type='range'] {
+  width: 110px;
+}
+
+.overlay-value {
+  min-width: 3rem;
+  color: #6B6459;
+}
+
+.overlay-controls button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.overlay-adjust-btn.active {
+  background: #8C7A5B;
+  color: #fff;
+}
+
+.overlay-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.75rem;
+  color: #6B6459;
+}
+
+.source-overlay-image {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  z-index: 5;
+  transform-origin: center center;
+}
+
+.source-overlay-image.adjusting {
+  cursor: move;
+  outline: 2px dashed #8C7A5B;
+}
+
+.source-overlay-image.calibrating {
+  cursor: crosshair;
+  outline: 2px dashed #C08A3E;
+}
+
+/* 2点合わせで1点目をクリックした位置に出す印 */
+.overlay-calib-marker {
+  position: absolute;
+  z-index: 6;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid #C08A3E;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+}
+
+/* 幅と奥行きのように、2つの入力を横に並べる */
+.editor-field-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.editor-field-row .editor-field {
+  flex: 1;
+  min-width: 0;
 }
 
 .editor-nudge-row {

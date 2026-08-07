@@ -15,6 +15,7 @@ import { WindowRenderer } from './WindowRenderer'
 import { WallEditHandles } from './WallEditHandles'
 import { WindowEditHandles } from './WindowEditHandles'
 import { FixtureEditHandles } from './FixtureEditHandles'
+import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
 import { clientToSvg, canvasToFloor } from './svgCoords'
 
@@ -31,6 +32,7 @@ interface FloorCanvasProps {
   selectedFixtureId?: string | null
   onRoomSelect?: (roomId: string, additive?: boolean) => void
   onStairSelect?: (stairId: string) => void
+  onStairMove?: (stairId: string, delta: Point) => void
   onWallSelect?: (wallId: string) => void
   onDoorSelect?: (doorId: string) => void
   onWindowSelect?: (windowId: string) => void
@@ -45,6 +47,7 @@ interface FloorCanvasProps {
   onWindowEndpointMove?: (windowId: string, endpoint: 'start' | 'end', position: Point) => void
   onWindowMove?: (windowId: string, start: Point, end: Point) => void
   onFixtureMove?: (fixtureId: string, position: Point) => void
+  onFixtureResize?: (fixtureId: string, corner: FixtureCorner, position: Point) => void
   /** 追加配置モード時のクリック（floor 座標） */
   placeMode?: boolean
   onPlaceClick?: (positionFloor: Point) => void
@@ -97,6 +100,7 @@ export function FloorCanvas({
   selectedFixtureId,
   onRoomSelect,
   onStairSelect,
+  onStairMove,
   onWallSelect,
   onDoorSelect,
   onWindowSelect,
@@ -111,6 +115,7 @@ export function FloorCanvas({
   onWindowEndpointMove,
   onWindowMove,
   onFixtureMove,
+  onFixtureResize,
   placeMode,
   onPlaceClick,
 }: FloorCanvasProps) {
@@ -221,7 +226,9 @@ export function FloorCanvas({
               editable={editable}
               renderLabels={false}
               selected={selectedStairId === stair.id}
+              floorOffset={floorOffset}
               onSelect={onStairSelect}
+              onMove={onStairMove ? (delta) => onStairMove(stair.id, delta) : undefined}
             />
           ))}
         </g>
@@ -235,6 +242,14 @@ export function FloorCanvas({
                   y={fixture.position.y}
                   width={fixture.width}
                   height={fixture.height}
+                  // 記号が回転しているときはクリック判定も一緒に回す
+                  transform={
+                    fixture.angle
+                      ? `rotate(${fixture.angle} ${fixture.position.x + fixture.width / 2} ${
+                          fixture.position.y + fixture.height / 2
+                        })`
+                      : undefined
+                  }
                   fill="transparent"
                   className="fixture-hit"
                   style={{ cursor: 'pointer' }}
@@ -364,6 +379,11 @@ export function FloorCanvas({
               fixture={selectedFixture}
               floorOffset={floorOffset}
               onMove={(pos) => onFixtureMove(selectedFixture.id, pos)}
+              onResize={
+                onFixtureResize
+                  ? (corner, pos) => onFixtureResize(selectedFixture.id, corner, pos)
+                  : undefined
+              }
             />
           </g>
         )}

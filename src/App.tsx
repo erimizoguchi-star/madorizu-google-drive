@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { ExportButton } from './components/ExportButton'
 import { JsonDataButtons } from './components/JsonDataButtons'
 import { RoomEditor } from './components/RoomEditor'
+import { SavedPlansPanel } from './components/SavedPlansPanel'
+import {
+  DEFAULT_SOURCE_OVERLAY,
+  SourceOverlayControls,
+  type SourceOverlayState,
+} from './components/SourceOverlayControls'
 import { UploadPanel } from './components/UploadPanel'
 import { ZoomableView } from './components/ZoomableView'
 import { FloorPlanView } from './renderer/FloorPlanView'
@@ -16,6 +22,7 @@ import {
   resizeRoomEdge,
   setRoomPolygon,
   updateLabelOffset,
+  updateStair,
 } from './utils/floorPlanEdit'
 import {
   addDoorAt,
@@ -32,6 +39,7 @@ import {
   moveFixture,
   moveWallEndpoint,
   moveWindowEndpoint,
+  resizeFixtureCorner,
   setWallEndpoints,
   setWindowEndpoints,
 } from './utils/floorPlanDrag'
@@ -56,6 +64,10 @@ function App() {
     null
   )
   const [placeKind, setPlaceKind] = useState<PlaceKind | null>(null)
+  const [overlay, setOverlay] = useState<SourceOverlayState>(DEFAULT_SOURCE_OVERLAY)
+  const [calibrationStep, setCalibrationStep] = useState(0)
+  const [savedPlanId, setSavedPlanId] = useState<string | null>(null)
+  const [wideEdit, setWideEdit] = useState(false)
   const [wallDraftStart, setWallDraftStart] = useState<Point | null>(null)
 
   const handleResult = (result: AnalysisResult) => {
@@ -85,7 +97,9 @@ function App() {
 
     if (ref.kind === 'room') {
       const { floorId, roomId } = ref
-      if (options?.additive) {
+      if (options?.keepMergeSelection) {
+        // 合成リスト側が選択を管理しているので、ここでは上書きしない
+      } else if (options?.additive) {
         setMergeRoomIds((prev) => {
           const base = prev?.floorId === floorId ? [...prev.roomIds] : []
           if (!base.includes(roomId)) base.push(roomId)
@@ -221,7 +235,7 @@ function App() {
   }, [placeKind])
 
   return (
-    <div className="app">
+    <div className={`app ${wideEdit ? 'app-wide-edit' : ''}`}>
       <header className="app-header">
         <div className="header-content">
           <h1>間取図ジェネレーター</h1>
@@ -230,7 +244,7 @@ function App() {
       </header>
 
       <main className="app-main">
-        <aside className="sidebar">
+        <aside className={`sidebar ${wideEdit ? 'sidebar-collapsed' : ''}`}>
           <UploadPanel
             onResult={handleResult}
             onSourceReady={(source) => {
@@ -324,6 +338,17 @@ function App() {
 
           {floorPlan && (
             <>
+              <SavedPlansPanel
+                floorPlan={floorPlan}
+                currentId={savedPlanId}
+                onCurrentIdChange={setSavedPlanId}
+                onLoad={(plan) => {
+                  resetFloorPlan(plan)
+                  setSelected(null)
+                  setMergeRoomIds(null)
+                  setPlaceKind(null)
+                }}
+              />
               <JsonDataButtons
                 floorPlan={floorPlan}
                 onImport={(plan) => {
@@ -355,7 +380,24 @@ function App() {
             </div>
           )}
 
-          {sourcePreview && (
+          {floorPlan && (
+            <div className="edit-space-bar">
+              <button
+                type="button"
+                className={`btn btn-secondary wide-edit-btn ${wideEdit ? 'active' : ''}`}
+                onClick={() => setWideEdit((v) => !v)}
+              >
+                {wideEdit ? '◀ 編集パネルを表示' : '編集画面を広げる ⤢'}
+              </button>
+              {wideEdit && (
+                <span className="edit-space-hint">
+                  左パネルとアップロード画像を隠しています。詳細を編集するときは戻してください。
+                </span>
+              )}
+            </div>
+          )}
+
+          {sourcePreview && !wideEdit && (
             <div className="source-preview-card">
               <h3>アップロードした平面図</h3>
               <p className="source-file-name">{sourcePreview.fileName}</p>
@@ -383,9 +425,30 @@ function App() {
           {floorPlan && (
             <div className="generated-preview-card">
               <h3>{isDemo ? 'サンプル間取図' : '生成された間取図'}</h3>
+              {sourcePreview && (
+                <SourceOverlayControls
+                  fileName={sourcePreview.fileName}
+                  state={overlay}
+                  calibrationStep={calibrationStep}
+                  onChange={setOverlay}
+                />
+              )}
               <FloorPlanView
                 floorPlan={floorPlan}
                 editable={editMode}
+                overlay={overlay}
+                overlayUrl={sourcePreview?.url}
+                onOverlayOffsetChange={(offset) => setOverlay((prev) => ({ ...prev, offset }))}
+                onOverlayCalibrationStep={setCalibrationStep}
+                onOverlayCalibrated={({ scaleX, scaleY, offset }) => {
+                  setOverlay((prev) => ({
+                    ...prev,
+                    scaleX,
+                    scaleY,
+                    offset,
+                    calibrating: false,
+                  }))
+                }}
                 selected={selected}
                 mergeRoomIds={mergeRoomIds}
                 placeKind={editMode ? placeKind : null}
@@ -426,6 +489,14 @@ function App() {
                 }}
                 onFixtureMove={(ref, position) => {
                   commit((plan) => moveFixture(plan, ref, position), { coalesce: true })
+                }}
+                onStairMove={(ref, delta) => {
+                  commit((plan) => updateStair(plan, ref, { moveBy: delta }), { coalesce: true })
+                }}
+                onFixtureResize={(ref, corner, position) => {
+                  commit((plan) => resizeFixtureCorner(plan, ref, corner, position), {
+                    coalesce: true,
+                  })
                 }}
               />
             </div>

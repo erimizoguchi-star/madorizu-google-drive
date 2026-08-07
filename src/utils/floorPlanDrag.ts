@@ -1,5 +1,5 @@
 import type { Floor, FloorPlan, Point, Wall } from '../types/floorPlan'
-import { snapSvgToMmGrid } from './roomGeometry'
+import { mmToSvgUnits, snapSvgToMmGrid, svgUnitsToMm } from './roomGeometry'
 
 const EPS = 0.05
 
@@ -123,8 +123,9 @@ export function moveWallEndpointOnFloor(
     walls: floor.walls.map((wall) => {
       if (wall.id !== wallId) return wall
       const next = constrainWallEndpoint(wall, endpoint, position)
-      if (endpoint === 'start') return { ...wall, start: next }
-      return { ...wall, end: next }
+      // 手動調整した壁は、部屋の編集で作り直されないよう印を付ける
+      if (endpoint === 'start') return { ...wall, start: next, manual: true }
+      return { ...wall, end: next, manual: true }
     }),
   }
 }
@@ -159,6 +160,7 @@ export function setWallEndpointsOnFloor(
             ...w,
             start: { x: round(snappedStart.x), y: round(snappedStart.y) },
             end: { x: round(snappedEnd.x), y: round(snappedEnd.y) },
+            manual: true,
           }
         : w
     ),
@@ -330,4 +332,60 @@ export function moveFixture(
   position: Point
 ): FloorPlan {
   return updateFloor(floorPlan, ref, (floor) => moveFixtureOnFloor(floor, ref.fixtureId, position))
+}
+
+/** 設備の四隅。ドラッグした角の対角は動かさない */
+export type FixtureCorner = 'nw' | 'ne' | 'se' | 'sw'
+
+/** 設備は部屋より小さいので、50mm ではなく 10mm 刻みで調整する */
+function snapFixtureValue(v: number): number {
+  const mm = svgUnitsToMm(v)
+  return mmToSvgUnits(Math.round(mm / FIXTURE_SNAP_MM) * FIXTURE_SNAP_MM)
+}
+
+const FIXTURE_SNAP_MM = 10
+const FIXTURE_MIN_SIZE_SVG = mmToSvgUnits(100)
+
+export function resizeFixtureCorner(
+  floorPlan: FloorPlan,
+  ref: FloorRef & { fixtureId: string },
+  corner: FixtureCorner,
+  positionFloor: Point
+): FloorPlan {
+  return updateFloor(floorPlan, ref, (floor) => ({
+    ...floor,
+    fixtures: floor.fixtures.map((fixture) => {
+      if (fixture.id !== ref.fixtureId) return fixture
+
+      const left = fixture.position.x
+      const top = fixture.position.y
+      const right = left + fixture.width
+      const bottom = top + fixture.height
+
+      // ドラッグしていない側の辺は固定したまま、掴んだ角だけを動かす
+      const anchorX = corner === 'nw' || corner === 'sw' ? right : left
+      const anchorY = corner === 'nw' || corner === 'ne' ? bottom : top
+      const movedX = snapFixtureValue(positionFloor.x)
+      const movedY = snapFixtureValue(positionFloor.y)
+
+      const minX = Math.min(anchorX, movedX)
+      const maxX = Math.max(anchorX, movedX)
+      const minY = Math.min(anchorY, movedY)
+      const maxY = Math.max(anchorY, movedY)
+
+      const width = Math.max(FIXTURE_MIN_SIZE_SVG, maxX - minX)
+      const height = Math.max(FIXTURE_MIN_SIZE_SVG, maxY - minY)
+
+      // 最小サイズに張り付いたときも、固定側の辺は動かさない
+      const x = movedX < anchorX ? anchorX - width : anchorX
+      const y = movedY < anchorY ? anchorY - height : anchorY
+
+      return {
+        ...fixture,
+        position: { x: round(x), y: round(y) },
+        width: round(width),
+        height: round(height),
+      }
+    }),
+  }))
 }

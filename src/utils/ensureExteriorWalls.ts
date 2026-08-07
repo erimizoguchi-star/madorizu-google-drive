@@ -1,4 +1,4 @@
-import type { Floor, Point, Room, Stair, Wall } from '../types/floorPlan'
+import type { Floor, HiddenWall, Point, Room, Stair, Wall } from '../types/floorPlan'
 
 type Segment = { x1: number; y1: number; x2: number; y2: number }
 type OrthoSeg = { horizontal: boolean; fixed: number; start: number; end: number }
@@ -146,37 +146,72 @@ function segmentToInteriorWall(seg: Segment, id: string): Wall {
   }
 }
 
-function countPolygonEdges(rooms: Room[], stairs: Stair[]): Map<string, { seg: Segment; count: number }> {
-  const edgeCount = new Map<string, { seg: Segment; count: number }>()
-  const polygons = [...rooms.map((r) => r.polygon), ...stairs.map((s) => s.polygon)]
+type EdgeEntry = { seg: Segment; count: number; owners: string[] }
 
-  for (const polygon of polygons) {
-    for (const edge of polygonToEdges(polygon)) {
+function countPolygonEdges(rooms: Room[], stairs: Stair[]): Map<string, EdgeEntry> {
+  const edgeCount = new Map<string, EdgeEntry>()
+  const shapes = [
+    ...rooms.map((r) => ({ id: r.id, polygon: r.polygon })),
+    ...stairs.map((s) => ({ id: s.id, polygon: s.polygon })),
+  ]
+
+  for (const shape of shapes) {
+    for (const edge of polygonToEdges(shape.polygon)) {
       const key = segmentKey(edge)
       const entry = edgeCount.get(key)
-      if (entry) entry.count += 1
-      else edgeCount.set(key, { seg: edge, count: 1 })
+      if (entry) {
+        entry.count += 1
+        entry.owners.push(shape.id)
+      } else {
+        edgeCount.set(key, { seg: edge, count: 1, owners: [shape.id] })
+      }
     }
   }
 
   return edgeCount
 }
 
+/** 内壁を「接する2部屋の組」で表すキー（並び順に依存しない） */
+export function wallPairKey(owners: string[]): string {
+  return [...owners].sort().join('|')
+}
+
 /**
  * 部屋・階段の共有辺ごとに内壁を1本ずつ生成する（部屋をまたぐ長い線は結合しない）。
  */
-function collectInteriorWallSegments(rooms: Room[], stairs: Stair[]): Segment[] {
+function collectInteriorWallEntries(rooms: Room[], stairs: Stair[]): EdgeEntry[] {
   const edgeCount = countPolygonEdges(rooms, stairs)
   return [...edgeCount.values()]
     .filter((entry) => entry.count === 2)
-    .map((entry) => entry.seg)
-    .filter((seg) => segmentLength(seg) >= MIN_SEGMENT)
+    .filter((entry) => segmentLength(entry.seg) >= MIN_SEGMENT)
 }
 
-function collectInteriorWalls(rooms: Room[], stairs: Stair[]): Wall[] {
+/** 壁がどの部屋どうしの境界かを求める（削除を覚えておくために使う） */
+export function findWallPairKey(floor: Floor, wall: Wall): string | null {
+  for (const entry of collectInteriorWallEntries(floor.rooms, floor.stairs)) {
+    if (wallCoversSegment(wall, entry.seg)) return wallPairKey(entry.owners)
+  }
+  return null
+}
+
+function isHiddenPair(hidden: HiddenWall[] | undefined, pair: string): boolean {
+  return !!hidden?.some((h) => h.pair === pair)
+}
+
+function isHiddenSegment(hidden: HiddenWall[] | undefined, seg: Segment): boolean {
+  return !!hidden?.some((h) => {
+    if (!h.start || !h.end) return false
+    return wallCoversSegment({ id: 'hidden', start: h.start, end: h.end }, seg)
+  })
+}
+
+function collectInteriorWalls(rooms: Room[], stairs: Stair[], hidden?: HiddenWall[]): Wall[] {
   let counter = 0
   const nextId = () => `w-int-${counter++}`
-  return collectInteriorWallSegments(rooms, stairs).map((seg) => segmentToInteriorWall(seg, nextId()))
+  return collectInteriorWallEntries(rooms, stairs)
+    .filter((entry) => !isHiddenPair(hidden, wallPairKey(entry.owners)))
+    .filter((entry) => !isHiddenSegment(hidden, entry.seg))
+    .map((entry) => segmentToInteriorWall(entry.seg, nextId()))
 }
 
 function segmentToWall(seg: Segment, id: string): Wall {
@@ -211,6 +246,8 @@ export function ensureExteriorWalls(floor: Floor): Floor {
 
   for (const seg of boundary) {
     if (segmentLength(seg) < MIN_SEGMENT) continue
+    // ユーザーが消した外壁は復活させない
+    if (isHiddenSegment(floor.hiddenWalls, seg)) continue
     const covered = walls.some((wall) => wallCoversSegment(wall, seg))
     if (!covered) {
       walls.push(segmentToWall(seg, nextId()))
@@ -226,6 +263,8 @@ export function ensureExteriorWalls(floor: Floor): Floor {
  */
 export function syncFloorWalls(floor: Floor): Floor {
   if (floor.rooms.length === 0) return floor
-  const interiorWalls = collectInteriorWalls(floor.rooms, floor.stairs)
-  return ensureExteriorWalls({ ...floor, walls: interiorWalls })
+  const interiorWalls = collectInteriorWalls(floor.rooms, floor.stairs, floor.hiddenWalls)
+  // 手動で追加・調整した壁は作り直さずそのまま残す
+  const manualWalls = floor.walls.filter((wall) => wall.manual)
+  return ensureExteriorWalls({ ...floor, walls: [...interiorWalls, ...manualWalls] })
 }

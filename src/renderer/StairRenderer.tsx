@@ -1,5 +1,7 @@
+import { useRef } from 'react'
 import type { Point, Stair } from '../types/floorPlan'
 import { STAIR, pointsToPath } from './styles'
+import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
 import { computeStairLabelLayout } from './roomLabelLayout'
 import { RoomLabels } from './RoomLabels'
 import type { LabelLineKind } from './roomLabelLayout'
@@ -15,7 +17,9 @@ interface StairRendererProps {
   selectable?: boolean
   editable?: boolean
   renderLabels?: boolean
+  floorOffset?: Point
   onSelect?: (stairId: string) => void
+  onMove?: (delta: Point) => void
   onLabelOffsetChange?: (kind: LabelLineKind, offset: Point) => void
 }
 
@@ -25,7 +29,9 @@ export function StairRenderer({
   selectable,
   editable,
   renderLabels = true,
+  floorOffset,
   onSelect,
+  onMove,
   onLabelOffsetChange,
 }: StairRendererProps) {
   const path = pointsToPath(stair.polygon)
@@ -33,8 +39,34 @@ export function StairRenderer({
   const { stepLines, arrowPath } = computeStairGraphics(stair)
   const label = computeStairLabelLayout(stair)
   const canSelect = selectable && onSelect
+  const canDrag = editable && !!onMove && !!floorOffset
+  const originRef = useRef<Point | null>(null)
   const tip = arrowPath?.points[arrowPath.points.length - 1]
   const startR = 2.2
+
+  const startDrag = (e: React.PointerEvent<SVGElement>) => {
+    if (!canDrag || !onMove || !floorOffset) return
+    const svg = e.currentTarget.ownerSVGElement
+    if (!svg) return
+    const from = clientToSvg(svg, e.clientX, e.clientY)
+    if (!from) return
+    originRef.current = canvasToFloor(from, floorOffset)
+
+    attachSvgPointerDrag(
+      e,
+      svg,
+      (canvasPos) => {
+        const origin = originRef.current
+        if (!origin) return
+        const now = canvasToFloor(canvasPos, floorOffset)
+        onMove({ x: now.x - origin.x, y: now.y - origin.y })
+        originRef.current = now
+      },
+      () => {
+        originRef.current = null
+      }
+    )
+  }
 
   return (
     <g
@@ -48,7 +80,8 @@ export function StairRenderer({
             }
           : undefined
       }
-      style={canSelect ? { cursor: 'pointer' } : undefined}
+      onPointerDown={canDrag ? startDrag : undefined}
+      style={canDrag ? { cursor: 'move' } : canSelect ? { cursor: 'pointer' } : undefined}
     >
       <defs>
         <clipPath id={clipId}>

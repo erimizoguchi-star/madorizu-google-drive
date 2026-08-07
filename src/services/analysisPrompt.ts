@@ -3,11 +3,19 @@ export const ANALYSIS_PROMPT = `あなたは日本の住宅・建築平面図を
 アップロード画像を注意深く観察し、間取りデータをJSONで出力してください。
 
 ## 解析手順（この順で考える）
-1. 図面の縮尺・寸法線を読み、1辺の実寸（mm）を特定する
-2. 建物外周（外壁）の矩形または直交多角形を決める
-3. 内壁で区切られた各部屋を識別し、図面上のラベル（LD、キッチン、和室など）を name に使う
+0. **図面枠・タイトルブロック・建具表・仕上表・家具・電気記号は間取りではない。無視する**
+   （表・凡例、室内に描かれたソファ/ベッド/テーブル、引き出し線つきの注記文字は読み飛ばす）
+1. **最初に建物全体の外形寸法（幅と高さ）を mm で確定する**
+   - いちばん外側の通し寸法（総寸法）を最優先で使う。縦向き（90度回転）の寸法数値も必ず読む
+   - 個別寸法の合計が総寸法と合うか検算する（例: 1365+1365+2275+910+2275 = 8190）
+   - ポーチ・玄関などの張り出しを含めた最大の外形を採用する
+2. 建物外周（外壁）の矩形または直交多角形を決める。**手順1で決めた外形寸法と必ず一致させる**
+3. 内壁で区切られた各部屋を識別し、図面上のラベル（LD、キッチン、Living Dining、Kitchen など）を name に使う
 4. 各部屋を直交する矩形ポリゴン（4頂点）で表現する（L字・コの字は矩形を分割して複数部屋にする）
-5. 外壁・内壁・扉・窓・設備・階段を配置する
+5. **面積表記（「26.58㎡ 16.1J」「(4.73㎡ 2.9J)」など）がある部屋は、その面積と一致する寸法にする**
+   - 帖数 × 1.62 ≒ ㎡。ポリゴンの面積が表記と大きく食い違ったら寸法を取り直す
+6. 全部屋を合計したとき、手順1の外形寸法をはみ出さず、内側に空白も残さないよう調整する
+7. 外壁・内壁・扉・窓・設備・階段を配置する
 
 ## 座標ルール（厳守）
 - 単位は mm（1m = 1000mm）。整数または50mm刻みを推奨
@@ -17,8 +25,32 @@ export const ANALYSIS_PROMPT = `あなたは日本の住宅・建築平面図を
 - **建物外周の内側に白い空白セルを残さない**（廊下・ホール・階段前も必ず部屋または stairs で埋める）
 - 壁は start/end の2点。水平・垂直のみ（斜め壁は禁止）
 - **内壁は部屋ポリゴンの共有辺ごとに分割**（複数部屋をまたぐ1本の長い内壁は禁止。walls の内壁は省略可＝部屋から自動生成）
-- 扉 position は開き側の壁上の点。width は扉幅(mm)。angle は度（水平右=0、下=90）。swing は 1 または -1
+- 扉 position は**扉の端**（開口の始まり）の座標。中心ではない
+  - 水平な壁の扉 → position は開口の**左端**。そこから右へ width 分が扉
+  - 垂直な壁の扉 → position は開口の**上端**。そこから下へ width 分が扉
+  - 例: 壁 y=7280 の x=910〜1710 が開口なら {"position": {"x": 910, "y": 7280}, "width": 800, "angle": 0}
+  - **扉は必ず壁の内側に収める**（壁の端からはみ出さない）
+- width は扉幅(mm)。swing は 1 または -1
+- **扉の angle は、その扉が付いている壁の向きと必ず一致させる**
+  - 上下の壁（水平な壁＝y が同じ2点を結ぶ壁）に付く扉 → angle は 0
+  - 左右の壁（垂直な壁＝x が同じ2点を結ぶ壁）に付く扉 → angle は 90
+  - 使うのは 0 と 90 だけ。180 や 270 は使わない（開く向きは swing で表す）
 - 窓は start/end の2点（壁上の線分）
+
+## 室名の対応（英語表記の図面も多い）
+- Living Dining / LDK / LD / Living → ld
+- Kitchen → kitchen
+- Pantry / Closet / Cloak / Walk-In Closet / WIC / Storage / 物入 / 収納 → storage
+- Laundry / Sanitary / Washroom / 洗面 / 脱衣 → washroom
+- Lavatory / Toilet / WC / トイレ → toilet
+- Bathroom / Bath / UB / 浴室 → bathroom
+- Entrance / 玄関 → entrance
+- Hall / Corridor / 廊下 / ホール → hallway
+- Porch / Pouch / Deck / Terrace / ポーチ → porch
+- Room / Bedroom / Study / 洋室 / 寝室 → western
+- Japanese Room / 和室 → japanese
+- Void / 吹抜 → void
+- name は図面の表記をそのまま使う（Living Dining なら "Living Dining"）。type だけ上の表で決める
 
 ## 部屋タイプ（type はこの一覧のみ）
 ld, kitchen, bathroom, toilet, washroom, japanese, western, hallway, entrance, stairs, storage, porch, attic, void, other
@@ -37,6 +69,12 @@ type: bathtub, toilet, sink, stove, kitchen_sink, refrigerator, washer, car
 浴室→bathtub、トイレ→toilet、洗面→sink、コンロ→stove、キッチンシンク→kitchen_sink
 冷蔵庫・「冷」記号→refrigerator、洗濯機・「洗」記号→washer、駐車場の車アウトライン→car
 冷蔵庫・洗濯機は正方形に近い枠（約500×500mm）、車は上面図（約1800×4200mm、駐車マスに合わせる）
+
+**設備は必ず次の形式で出力する（x/y や depth を直接書かない）**
+{"id": "fx1", "type": "bathtub", "position": {"x": 2730, "y": 3640}, "width": 1600, "height": 800}
+- position は設備を囲む長方形の**左上**の座標（mm）。中心ではない
+- width は x 方向、height は y 方向の寸法（mm）。奥行きも height で表す
+- 縦向きに置く場合は angle（度）を付けてもよい（省略時 0）
 
 ## 出力JSONスキーマ
 {
