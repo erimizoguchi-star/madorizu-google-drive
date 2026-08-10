@@ -84,6 +84,7 @@ export function FloorPlanView({
   selected,
   mergeRoomIds,
   placeKind,
+  wallDraftStart,
   overlay,
   overlayUrl,
   onOverlayOffsetChange,
@@ -321,6 +322,7 @@ export function FloorPlanView({
                   : null
               }
               placeMode={placing}
+              wallDraftStart={placeKind === 'wall' ? wallDraftStart : null}
               onPlaceClick={
                 placing ? (pos) => onPlaceClick?.(floor.id, pos) : undefined
               }

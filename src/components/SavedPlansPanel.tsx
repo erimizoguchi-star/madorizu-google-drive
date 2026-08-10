@@ -38,19 +38,27 @@ export function SavedPlansPanel({
   }
 
   const handleSaveNew = () => {
-    const entry = savePlan(name || floorPlan.title, floorPlan)
-    onCurrentIdChange(entry.id)
-    setName('')
-    refresh()
-    notify(`「${entry.name}」を保存しました`)
+    try {
+      const entry = savePlan(name || floorPlan.title, floorPlan)
+      onCurrentIdChange(entry.id)
+      setName('')
+      refresh()
+      notify(`「${entry.name}」を保存しました`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '保存に失敗しました')
+    }
   }
 
   const handleOverwrite = () => {
     if (!currentId) return
-    const target = plans.find((p) => p.id === currentId)
-    const entry = savePlan(name || target?.name || floorPlan.title, floorPlan, currentId)
-    refresh()
-    notify(`「${entry.name}」に上書き保存しました`)
+    try {
+      const target = plans.find((p) => p.id === currentId)
+      const entry = savePlan(name || target?.name || floorPlan.title, floorPlan, currentId)
+      refresh()
+      notify(`「${entry.name}」に上書き保存しました`)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '保存に失敗しました')
+    }
   }
 
   const handleLoad = (plan: SavedPlan) => {

@@ -51,6 +51,8 @@ interface FloorCanvasProps {
   onFixtureResize?: (fixtureId: string, corner: FixtureCorner, position: Point) => void
   /** 追加配置モード時のクリック（floor 座標） */
   placeMode?: boolean
+  /** 壁追加モードで1点目をクリックした位置（floor 座標） */
+  wallDraftStart?: Point | null
   onPlaceClick?: (positionFloor: Point) => void
 }
 
@@ -118,6 +120,7 @@ export function FloorCanvas({
   onFixtureMove,
   onFixtureResize,
   placeMode,
+  wallDraftStart,
   onPlaceClick,
 }: FloorCanvasProps) {
   // ドラッグ中に描画範囲が変わると図面が伸縮し、掴んだ要素がカーソルから離れてしまう。
@@ -416,6 +419,25 @@ export function FloorCanvas({
               onPlaceClick(canvasToFloor(canvas, floorOffset))
             }}
           />
+        )}
+        {placeMode && wallDraftStart && (
+          // 壁追加の1点目。ここに印が出ないと、クリックが効いたか分からない
+          <g className="wall-draft-marker" pointerEvents="none">
+            <circle
+              cx={wallDraftStart.x + offsetX}
+              cy={wallDraftStart.y + offsetY}
+              r={7}
+              fill="none"
+              stroke="#C08A3E"
+              strokeWidth={2}
+            />
+            <circle
+              cx={wallDraftStart.x + offsetX}
+              cy={wallDraftStart.y + offsetY}
+              r={2.2}
+              fill="#C08A3E"
+            />
+          </g>
         )}
         <NorthArrow x={width - 28} y={32} size={26} />
       </svg>

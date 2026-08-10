@@ -8,7 +8,7 @@ interface JsonDataButtonsProps {
 
 export function JsonDataButtons({ floorPlan, onImport }: JsonDataButtonsProps) {
   const handleExportJson = () => {
-    const blob = new Blob([JSON.stringify(floorPlan, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ ...floorPlan, coordUnits: 'svg' }, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

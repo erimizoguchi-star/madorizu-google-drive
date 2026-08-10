@@ -195,6 +195,11 @@ export interface FloorPlan {
   floors: Floor[]
   /** 1単位 = 何mm か（デフォルト 100mm） */
   scaleMm?: number
+  /**
+   * 座標の単位。アプリが書き出す JSON は 'svg'（内部単位）を明示する。
+   * 未指定の場合は座標の大きさから推定する（AI 出力は mm）。
+   */
+  coordUnits?: 'mm' | 'svg'
 }
 
 export interface AnalysisResult {

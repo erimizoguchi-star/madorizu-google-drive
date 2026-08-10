@@ -31,7 +31,14 @@ function readAll(): SavedPlan[] {
 }
 
 function writeAll(plans: SavedPlan[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(plans))
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(plans))
+  } catch {
+    // 容量超過など。呼び出し側でユーザーに知らせる
+    throw new Error(
+      'ブラウザへの保存に失敗しました（容量不足の可能性）。不要な保存データを削除するか、JSON保存を使ってください。'
+    )
+  }
 }
 
 /** 新しい順に並べて返す */

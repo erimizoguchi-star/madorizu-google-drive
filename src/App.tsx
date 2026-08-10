@@ -359,7 +359,17 @@ function App() {
                   setPlaceKind(null)
                 }}
               />
-              <ExportButton targetId="madorizu-export" filename="madorizu" />
+              <ExportButton
+                targetId="madorizu-export"
+                filename="madorizu"
+                onBeforeExport={() => {
+                  // 選択枠・編集ハンドルが画像に写り込まないよう解除してから出力する
+                  setSelected(null)
+                  setMergeRoomIds(null)
+                  setPlaceKind(null)
+                  setWallDraftStart(null)
+                }}
+              />
             </>
           )}
         </aside>
