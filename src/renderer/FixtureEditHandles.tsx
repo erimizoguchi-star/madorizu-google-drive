@@ -1,7 +1,8 @@
+import { useRef } from 'react'
 import type { Fixture, Point } from '../types/floorPlan'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { SELECTION } from './styles'
-import { attachSvgPointerDrag, canvasToFloor } from './svgCoords'
+import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
 
 /** 100% 表示だと画面上 5px 程度にしかならないため、掴める大きさにしておく */
 const CORNER_SIZE = 12
@@ -25,6 +26,16 @@ function unrotate(p: Point, cx: number, cy: number, angleDeg: number): Point {
   }
 }
 
+/** 原点まわりに回す */
+function rotateVector(v: Point, angleDeg: number): Point {
+  if (!angleDeg) return v
+  const rad = (angleDeg * Math.PI) / 180
+  return {
+    x: v.x * Math.cos(rad) - v.y * Math.sin(rad),
+    y: v.x * Math.sin(rad) + v.y * Math.cos(rad),
+  }
+}
+
 export function FixtureEditHandles({
   fixture,
   floorOffset,
@@ -32,16 +43,38 @@ export function FixtureEditHandles({
   onResize,
 }: FixtureEditHandlesProps) {
   const { position, width, height, angle = 0 } = fixture
+  // 回転の中心はキャンバス座標。ポインタも同じ座標系で回転を戻してから
+  // フロア座標へ直す（座標系を混ぜるとカーソルと設備がずれる）。
   const cx = position.x + width / 2
   const cy = position.y + height / 2
+
+  const latest = useRef(fixture)
+  latest.current = fixture
+
+  const toFloorPoint = (canvasPos: Point, center: Point, angleDeg: number): Point =>
+    canvasToFloor(unrotate(canvasPos, center.x, center.y, angleDeg), floorOffset)
 
   const startDrag = (e: React.PointerEvent<SVGRectElement>) => {
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
 
+    // 掴んだ点が指の下から動かないようにする。
+    // 回転していると「左上＋ずれ」では合わないので、
+    //   新しい左上 = カーソル − 半径ベクトル − 回転させた(掴み位置 − 半径ベクトル)
+    // として求める（回転は中心まわりに掛かるため）。
+    const half = { x: width / 2, y: height / 2 }
+    const grabbed = clientToSvg(svg, e.clientX, e.clientY)
+    if (!grabbed) return
+    const grabUnrotated = unrotate(grabbed, cx, cy, angle)
+    const grabOffset = { x: grabUnrotated.x - position.x, y: grabUnrotated.y - position.y }
+    const arm = rotateVector({ x: grabOffset.x - half.x, y: grabOffset.y - half.y }, angle)
+
     attachSvgPointerDrag(e, svg, (canvasPos) => {
-      const floor = canvasToFloor(canvasPos, floorOffset)
-      onMove(unrotate(floor, cx, cy, angle))
+      const cursorFloor = canvasToFloor(canvasPos, floorOffset)
+      onMove({
+        x: cursorFloor.x - half.x - arm.x,
+        y: cursorFloor.y - half.y - arm.y,
+      })
     })
   }
 
@@ -52,8 +85,10 @@ export function FixtureEditHandles({
     if (!svg) return
 
     attachSvgPointerDrag(e, svg, (canvasPos) => {
-      const floor = canvasToFloor(canvasPos, floorOffset)
-      onResize(corner, unrotate(floor, cx, cy, angle))
+      // 大きさを変えると中心も動くので、その時点の設備から中心を取り直す
+      const f = latest.current
+      const center = { x: f.position.x + f.width / 2, y: f.position.y + f.height / 2 }
+      onResize(corner, toFloorPoint(canvasPos, center, f.angle ?? 0))
     })
   }
 

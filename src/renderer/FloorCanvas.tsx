@@ -1,3 +1,4 @@
+import { useRef, useSyncExternalStore } from 'react'
 import type { Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
@@ -17,7 +18,7 @@ import { WindowEditHandles } from './WindowEditHandles'
 import { FixtureEditHandles } from './FixtureEditHandles'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
-import { clientToSvg, canvasToFloor } from './svgCoords'
+import { clientToSvg, canvasToFloor, isSvgDragging, subscribeSvgDrag } from './svgCoords'
 
 interface FloorCanvasProps {
   floor: Floor
@@ -119,7 +120,14 @@ export function FloorCanvas({
   placeMode,
   onPlaceClick,
 }: FloorCanvasProps) {
-  const bounds = getBounds(floor)
+  // ドラッグ中に描画範囲が変わると図面が伸縮し、掴んだ要素がカーソルから離れてしまう。
+  // ドラッグしている間は範囲を固定し、離した時点で新しい範囲に合わせ直す。
+  const dragging = useSyncExternalStore(subscribeSvgDrag, isSvgDragging, () => false)
+  const liveBounds = getBounds(floor)
+  const frozenBounds = useRef(liveBounds)
+  if (!dragging) frozenBounds.current = liveBounds
+  const bounds = dragging ? frozenBounds.current : liveBounds
+
   const width = bounds.maxX - bounds.minX + padding * 2
   const height = bounds.maxY - bounds.minY + padding * 2
   const offsetX = -bounds.minX + padding
