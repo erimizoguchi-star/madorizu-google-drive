@@ -67,6 +67,7 @@ import {
 } from '../utils/floorPlanAdd'
 import type { LabelLineKind } from '../renderer/roomLabelLayout'
 import { mergeRooms } from '../utils/mergeRooms'
+import { hasWindowDirection } from '../utils/windowOrientation'
 import {
   getRectDimensionsMm,
   MIN_ROOM_SIZE_MM,
@@ -1228,6 +1229,30 @@ export function RoomEditor({
               }
             </p>
           </div>
+
+          {hasWindowDirection(currentWindow.window.kind) && (
+            <div className="editor-field">
+              <span className="editor-offset-label">開く向き</span>
+              <div className="editor-nudge-row">
+                <button
+                  type="button"
+                  className="btn editor-nudge-btn"
+                  onClick={() =>
+                    handleWindowField({
+                      outward: currentWindow.window.outward === -1 ? 1 : -1,
+                    })
+                  }
+                >
+                  ⇄ 反対側に開く
+                </button>
+              </div>
+              <p className="editor-field-hint">
+                生成時は建物の外側へ開くよう自動で向けています。
+                室内側を向いてしまったときはこのボタンで反転してください。
+              </p>
+            </div>
+          )}
+
           <button type="button" className="btn btn-danger editor-delete-btn" onClick={handleDeleteWindow}>
             この{windowKindLabel(currentWindow.window.kind)}を削除
           </button>

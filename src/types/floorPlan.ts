@@ -113,6 +113,12 @@ export interface Window {
   end: Point
   /** 省略時は引き違い窓 */
   kind?: WindowKind
+  /**
+   * すべり出し窓・開き窓が開く向き。
+   * start→end の進行方向に対して 1 = 右側、-1 = 左側。
+   * 通常は建物の外側になるよう自動判定する（省略時は 1）。
+   */
+  outward?: 1 | -1
 }
 
 export type FixtureType =
@@ -189,6 +195,11 @@ export interface FloorPlan {
   floors: Floor[]
   /** 1単位 = 何mm か（デフォルト 100mm） */
   scaleMm?: number
+  /**
+   * 座標の単位。アプリが書き出す JSON は 'svg'（内部単位）を明示する。
+   * 未指定の場合は座標の大きさから推定する（AI 出力は mm）。
+   */
+  coordUnits?: 'mm' | 'svg'
 }
 
 export interface AnalysisResult {

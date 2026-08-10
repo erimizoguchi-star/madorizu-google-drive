@@ -18,6 +18,7 @@ import { isValidWindowKind } from '../constants/windowOptions'
 import { isAreaJoHiddenByType } from '../constants/roomTypes'
 import { closeCoverageGaps } from './closeCoverageGaps'
 import { syncFloorWalls } from './ensureExteriorWalls'
+import { orientWindowsOutward } from './windowOrientation'
 import { mmToSvgUnits } from './roomGeometry'
 import { STAIR_DEFAULT_WIDTH_MM, withStairWidth } from './resizeStair'
 
@@ -50,7 +51,10 @@ const VALID_FIXTURE_TYPES = new Set<FixtureType>([
   'car',
 ])
 
-const MM_THRESHOLD = 800
+// mm か内部単位（SVG）かの推定閾値。
+// 住宅で 3000 を超えるのは mm 座標（3m 以上）だけで、内部単位なら 30m 建物に相当する。
+// 以前は 800 で、8m を超える建物の JSON を再読込すると mm と誤判定して 1/10 に縮んでいた。
+const MM_THRESHOLD = 3000
 const SNAP_MM = 50
 const RECT_TOLERANCE_MM = 200
 
@@ -159,6 +163,9 @@ function collectPlanPoints(plan: FloorPlan): Point[] {
 }
 
 function planUsesMmCoordinates(plan: FloorPlan): boolean {
+  // アプリが書き出した JSON は単位を明示している。推定はしない
+  if (plan.coordUnits === 'svg') return false
+  if (plan.coordUnits === 'mm') return true
   const points = collectPlanPoints(plan)
   if (points.length === 0) return false
   const maxCoord = Math.max(...points.map((p) => Math.max(Math.abs(p.x), Math.abs(p.y))))
@@ -482,7 +489,7 @@ function sanitizeFloor(floor: Floor, index: number, useMm: boolean): Floor {
       .filter((stair): stair is Stair => stair != null),
   })
 
-  return fitDoorsToWalls(closeCoverageGaps(draft))
+  return orientWindowsOutward(fitDoorsToWalls(closeCoverageGaps(draft)))
 }
 
 export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {

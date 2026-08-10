@@ -68,6 +68,7 @@ function App() {
   const [calibrationStep, setCalibrationStep] = useState(0)
   const [savedPlanId, setSavedPlanId] = useState<string | null>(null)
   const [wideEdit, setWideEdit] = useState(false)
+  const [panelHidden, setPanelHidden] = useState(false)
   const [wallDraftStart, setWallDraftStart] = useState<Point | null>(null)
 
   const handleResult = (result: AnalysisResult) => {
@@ -244,7 +245,7 @@ function App() {
       </header>
 
       <main className="app-main">
-        <aside className={`sidebar ${wideEdit ? 'sidebar-collapsed' : ''}`}>
+        <aside className={`sidebar ${panelHidden ? 'sidebar-collapsed' : ''}`}>
           <UploadPanel
             onResult={handleResult}
             onSourceReady={(source) => {
@@ -358,7 +359,17 @@ function App() {
                   setPlaceKind(null)
                 }}
               />
-              <ExportButton targetId="madorizu-export" filename="madorizu" />
+              <ExportButton
+                targetId="madorizu-export"
+                filename="madorizu"
+                onBeforeExport={() => {
+                  // 選択枠・編集ハンドルが画像に写り込まないよう解除してから出力する
+                  setSelected(null)
+                  setMergeRoomIds(null)
+                  setPlaceKind(null)
+                  setWallDraftStart(null)
+                }}
+              />
             </>
           )}
         </aside>
@@ -387,11 +398,18 @@ function App() {
                 className={`btn btn-secondary wide-edit-btn ${wideEdit ? 'active' : ''}`}
                 onClick={() => setWideEdit((v) => !v)}
               >
-                {wideEdit ? '◀ 編集パネルを表示' : '編集画面を広げる ⤢'}
+                {wideEdit ? '標準の表示に戻す' : '編集画面を広げる ⤢'}
+              </button>
+              <button
+                type="button"
+                className={`btn btn-secondary wide-edit-btn ${panelHidden ? 'active' : ''}`}
+                onClick={() => setPanelHidden((v) => !v)}
+              >
+                {panelHidden ? '▶ 編集パネルを表示' : '◀ 編集パネルを隠す'}
               </button>
               {wideEdit && (
                 <span className="edit-space-hint">
-                  左パネルとアップロード画像を隠しています。詳細を編集するときは戻してください。
+                  アップロード画像と見出しを隠して、間取図を画面いっぱいに表示しています。
                 </span>
               )}
             </div>

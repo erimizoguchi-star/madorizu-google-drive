@@ -1,3 +1,4 @@
+import { useRef, useSyncExternalStore } from 'react'
 import type { Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
@@ -17,7 +18,7 @@ import { WindowEditHandles } from './WindowEditHandles'
 import { FixtureEditHandles } from './FixtureEditHandles'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
-import { clientToSvg, canvasToFloor } from './svgCoords'
+import { clientToSvg, canvasToFloor, isSvgDragging, subscribeSvgDrag } from './svgCoords'
 
 interface FloorCanvasProps {
   floor: Floor
@@ -50,6 +51,8 @@ interface FloorCanvasProps {
   onFixtureResize?: (fixtureId: string, corner: FixtureCorner, position: Point) => void
   /** 追加配置モード時のクリック（floor 座標） */
   placeMode?: boolean
+  /** 壁追加モードで1点目をクリックした位置（floor 座標） */
+  wallDraftStart?: Point | null
   onPlaceClick?: (positionFloor: Point) => void
 }
 
@@ -117,9 +120,17 @@ export function FloorCanvas({
   onFixtureMove,
   onFixtureResize,
   placeMode,
+  wallDraftStart,
   onPlaceClick,
 }: FloorCanvasProps) {
-  const bounds = getBounds(floor)
+  // ドラッグ中に描画範囲が変わると図面が伸縮し、掴んだ要素がカーソルから離れてしまう。
+  // ドラッグしている間は範囲を固定し、離した時点で新しい範囲に合わせ直す。
+  const dragging = useSyncExternalStore(subscribeSvgDrag, isSvgDragging, () => false)
+  const liveBounds = getBounds(floor)
+  const frozenBounds = useRef(liveBounds)
+  if (!dragging) frozenBounds.current = liveBounds
+  const bounds = dragging ? frozenBounds.current : liveBounds
+
   const width = bounds.maxX - bounds.minX + padding * 2
   const height = bounds.maxY - bounds.minY + padding * 2
   const offsetX = -bounds.minX + padding
@@ -408,6 +419,25 @@ export function FloorCanvas({
               onPlaceClick(canvasToFloor(canvas, floorOffset))
             }}
           />
+        )}
+        {placeMode && wallDraftStart && (
+          // 壁追加の1点目。ここに印が出ないと、クリックが効いたか分からない
+          <g className="wall-draft-marker" pointerEvents="none">
+            <circle
+              cx={wallDraftStart.x + offsetX}
+              cy={wallDraftStart.y + offsetY}
+              r={7}
+              fill="none"
+              stroke="#C08A3E"
+              strokeWidth={2}
+            />
+            <circle
+              cx={wallDraftStart.x + offsetX}
+              cy={wallDraftStart.y + offsetY}
+              r={2.2}
+              fill="#C08A3E"
+            />
+          </g>
         )}
         <NorthArrow x={width - 28} y={32} size={26} />
       </svg>

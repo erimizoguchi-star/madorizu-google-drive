@@ -9,7 +9,6 @@ export const GEMINI_MODEL_FLASH = 'gemini-3.5-flash'
 export const GEMINI_MODEL_PRO = 'gemini-3.1-pro-preview'
 /** Pro が混雑しているときの高精度側フォールバック（thinking 既定で精度が高い） */
 export const GEMINI_MODEL_FLASH_THINKING = 'gemini-3.6-flash'
-const GEMINI_MODEL = GEMINI_MODEL_FLASH
 const MAX_RETRIES = 3
 /** 高精度モードの Pro は 1 図面で 2 分前後かかる（実測 121〜125 秒）ため余裕を見る */
 const REQUEST_TIMEOUT_MS = 300_000
@@ -179,4 +178,3 @@ export async function fetchAppConfig(): Promise<{ hasServerApiKey: boolean }> {
   }
 }
 
-export { GEMINI_MODEL }
