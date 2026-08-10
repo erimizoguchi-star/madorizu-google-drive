@@ -44,8 +44,11 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
 
   const ux = dx / len
   const uy = dy / len
-  const nx = -uy
-  const ny = ux
+  // すべり出し窓・開き窓は、開く向き（outward）の側へ記号を出す
+  const side = win.outward === -1 ? -1 : 1
+  const nx = -uy * side
+  const ny = ux * side
+  const sweep = side > 0 ? 1 : 0
   const gap =
     kind === 'floor' ? WINDOW.gap * 0.85 : kind === 'high' ? WINDOW.gap * 0.65 : WINDOW.gap / 2
   const color = selected ? SELECTION.stroke : WINDOW.color
@@ -93,7 +96,7 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
 
       {kind === 'casement' && (
         <path
-          d={`M ${win.start.x} ${win.start.y} A ${len} ${len} 0 0 1 ${midX + nx * len * 0.32} ${midY + ny * len * 0.32}`}
+          d={`M ${win.start.x} ${win.start.y} A ${len} ${len} 0 0 ${sweep} ${midX + nx * len * 0.32} ${midY + ny * len * 0.32}`}
           fill="none"
           stroke={color}
           strokeWidth={detailW}
@@ -105,14 +108,14 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
       {kind === 'double_casement' && (
         <>
           <path
-            d={`M ${win.start.x} ${win.start.y} A ${len / 2} ${len / 2} 0 0 1 ${midX + nx * len * 0.25} ${midY + ny * len * 0.25}`}
+            d={`M ${win.start.x} ${win.start.y} A ${len / 2} ${len / 2} 0 0 ${sweep} ${midX + nx * len * 0.25} ${midY + ny * len * 0.25}`}
             fill="none"
             stroke={color}
             strokeWidth={detailW}
             pointerEvents="none"
           />
           <path
-            d={`M ${win.end.x} ${win.end.y} A ${len / 2} ${len / 2} 0 0 0 ${midX + nx * len * 0.25} ${midY + ny * len * 0.25}`}
+            d={`M ${win.end.x} ${win.end.y} A ${len / 2} ${len / 2} 0 0 ${1 - sweep} ${midX + nx * len * 0.25} ${midY + ny * len * 0.25}`}
             fill="none"
             stroke={color}
             strokeWidth={detailW}

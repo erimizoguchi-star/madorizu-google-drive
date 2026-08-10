@@ -18,6 +18,7 @@ import { isValidWindowKind } from '../constants/windowOptions'
 import { isAreaJoHiddenByType } from '../constants/roomTypes'
 import { closeCoverageGaps } from './closeCoverageGaps'
 import { syncFloorWalls } from './ensureExteriorWalls'
+import { orientWindowsOutward } from './windowOrientation'
 import { mmToSvgUnits } from './roomGeometry'
 import { STAIR_DEFAULT_WIDTH_MM, withStairWidth } from './resizeStair'
 
@@ -482,7 +483,7 @@ function sanitizeFloor(floor: Floor, index: number, useMm: boolean): Floor {
       .filter((stair): stair is Stair => stair != null),
   })
 
-  return fitDoorsToWalls(closeCoverageGaps(draft))
+  return orientWindowsOutward(fitDoorsToWalls(closeCoverageGaps(draft)))
 }
 
 export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {

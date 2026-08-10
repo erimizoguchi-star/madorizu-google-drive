@@ -460,6 +460,8 @@ export function updateWindow(
   ref: { floorId: string; windowId: string },
   patch: {
     kind?: WindowKind
+    /** すべり出し窓などが開く向き */
+    outward?: 1 | -1
   }
 ): FloorPlan {
   const found = findWindow(floorPlan, ref)
@@ -474,6 +476,7 @@ export function updateWindow(
         const updated = { ...win }
         if (patch.kind === 'sliding') delete updated.kind
         else if (patch.kind !== undefined) updated.kind = patch.kind
+        if (patch.outward !== undefined) updated.outward = patch.outward
         return updated
       }),
     }
