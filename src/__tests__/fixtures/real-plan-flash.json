@@ -1,0 +1,721 @@
+{
+  "title": "実案件テスト（1階平面詳細図）",
+  "floors": [
+    {
+      "id": "1f",
+      "name": "1F",
+      "label": "1階",
+      "rooms": [
+        {
+          "id": "porch_north",
+          "name": "Pouch",
+          "type": "porch",
+          "polygon": [
+            {
+              "x": 0,
+              "y": 0
+            },
+            {
+              "x": 1820,
+              "y": 0
+            },
+            {
+              "x": 1820,
+              "y": 7280
+            },
+            {
+              "x": 0,
+              "y": 7280
+            }
+          ]
+        },
+        {
+          "id": "closet_north",
+          "name": "Closet",
+          "type": "storage",
+          "polygon": [
+            {
+              "x": 1820,
+              "y": 0
+            },
+            {
+              "x": 4394,
+              "y": 0
+            },
+            {
+              "x": 4394,
+              "y": 700
+            },
+            {
+              "x": 1820,
+              "y": 700
+            }
+          ]
+        },
+        {
+          "id": "kitchen",
+          "name": "Kitchen",
+          "type": "kitchen",
+          "areaJo": 2.9,
+          "polygon": [
+            {
+              "x": 4394,
+              "y": 0
+            },
+            {
+              "x": 6370,
+              "y": 0
+            },
+            {
+              "x": 6370,
+              "y": 1820
+            },
+            {
+              "x": 4394,
+              "y": 1820
+            }
+          ]
+        },
+        {
+          "id": "pantry",
+          "name": "Pantry",
+          "type": "storage",
+          "polygon": [
+            {
+              "x": 6370,
+              "y": 0
+            },
+            {
+              "x": 8190,
+              "y": 0
+            },
+            {
+              "x": 8190,
+              "y": 1820
+            },
+            {
+              "x": 6370,
+              "y": 1820
+            }
+          ]
+        },
+        {
+          "id": "living_dining",
+          "name": "Living Dining",
+          "type": "ld",
+          "areaJo": 16.1,
+          "polygon": [
+            {
+              "x": 1820,
+              "y": 700
+            },
+            {
+              "x": 4394,
+              "y": 700
+            },
+            {
+              "x": 4394,
+              "y": 1820
+            },
+            {
+              "x": 6370,
+              "y": 1820
+            },
+            {
+              "x": 6370,
+              "y": 7280
+            },
+            {
+              "x": 1820,
+              "y": 7280
+            }
+          ]
+        },
+        {
+          "id": "walk_in_closet",
+          "name": "Walk-In Closet",
+          "type": "storage",
+          "polygon": [
+            {
+              "x": 6370,
+              "y": 1820
+            },
+            {
+              "x": 8190,
+              "y": 1820
+            },
+            {
+              "x": 8190,
+              "y": 3640
+            },
+            {
+              "x": 6370,
+              "y": 3640
+            }
+          ]
+        },
+        {
+          "id": "laundry",
+          "name": "Laundry",
+          "type": "washroom",
+          "polygon": [
+            {
+              "x": 6370,
+              "y": 3640
+            },
+            {
+              "x": 8190,
+              "y": 3640
+            },
+            {
+              "x": 8190,
+              "y": 5460
+            },
+            {
+              "x": 6370,
+              "y": 5460
+            }
+          ]
+        },
+        {
+          "id": "sanitary",
+          "name": "Sanitary",
+          "type": "washroom",
+          "polygon": [
+            {
+              "x": 6370,
+              "y": 5460
+            },
+            {
+              "x": 8190,
+              "y": 5460
+            },
+            {
+              "x": 8190,
+              "y": 7280
+            },
+            {
+              "x": 6370,
+              "y": 7280
+            }
+          ]
+        },
+        {
+          "id": "porch_south",
+          "name": "Pouch",
+          "type": "porch",
+          "polygon": [
+            {
+              "x": 0,
+              "y": 7280
+            },
+            {
+              "x": 1820,
+              "y": 7280
+            },
+            {
+              "x": 1820,
+              "y": 9100
+            },
+            {
+              "x": 0,
+              "y": 9100
+            }
+          ]
+        },
+        {
+          "id": "entrance",
+          "name": "Entrance",
+          "type": "entrance",
+          "polygon": [
+            {
+              "x": 1820,
+              "y": 7280
+            },
+            {
+              "x": 3640,
+              "y": 7280
+            },
+            {
+              "x": 3640,
+              "y": 9100
+            },
+            {
+              "x": 1820,
+              "y": 9100
+            }
+          ]
+        },
+        {
+          "id": "hall",
+          "name": "Hall",
+          "type": "hallway",
+          "polygon": [
+            {
+              "x": 3640,
+              "y": 7280
+            },
+            {
+              "x": 5915,
+              "y": 7280
+            },
+            {
+              "x": 5915,
+              "y": 9100
+            },
+            {
+              "x": 3640,
+              "y": 9100
+            }
+          ]
+        },
+        {
+          "id": "lavatory",
+          "name": "Lavatory",
+          "type": "toilet",
+          "polygon": [
+            {
+              "x": 5915,
+              "y": 7280
+            },
+            {
+              "x": 6825,
+              "y": 7280
+            },
+            {
+              "x": 6825,
+              "y": 9100
+            },
+            {
+              "x": 5915,
+              "y": 9100
+            }
+          ]
+        },
+        {
+          "id": "bathroom",
+          "name": "Bathroom",
+          "type": "bathroom",
+          "polygon": [
+            {
+              "x": 6825,
+              "y": 7280
+            },
+            {
+              "x": 8190,
+              "y": 7280
+            },
+            {
+              "x": 8190,
+              "y": 9100
+            },
+            {
+              "x": 6825,
+              "y": 9100
+            }
+          ]
+        }
+      ],
+      "walls": [
+        {
+          "id": "w_ext_n",
+          "start": {
+            "x": 0,
+            "y": 0
+          },
+          "end": {
+            "x": 8190,
+            "y": 0
+          },
+          "exterior": true
+        },
+        {
+          "id": "w_ext_e",
+          "start": {
+            "x": 8190,
+            "y": 0
+          },
+          "end": {
+            "x": 8190,
+            "y": 9100
+          },
+          "exterior": true
+        },
+        {
+          "id": "w_ext_s",
+          "start": {
+            "x": 8190,
+            "y": 9100
+          },
+          "end": {
+            "x": 0,
+            "y": 9100
+          },
+          "exterior": true
+        },
+        {
+          "id": "w_ext_w",
+          "start": {
+            "x": 0,
+            "y": 9100
+          },
+          "end": {
+            "x": 0,
+            "y": 0
+          },
+          "exterior": true
+        },
+        {
+          "id": "w_int_1",
+          "start": {
+            "x": 1820,
+            "y": 0
+          },
+          "end": {
+            "x": 1820,
+            "y": 7280
+          },
+          "exterior": false
+        },
+        {
+          "id": "w_int_2",
+          "start": {
+            "x": 1820,
+            "y": 7280
+          },
+          "end": {
+            "x": 8190,
+            "y": 7280
+          },
+          "exterior": false
+        },
+        {
+          "id": "w_int_3",
+          "start": {
+            "x": 6370,
+            "y": 1820
+          },
+          "end": {
+            "x": 6370,
+            "y": 7280
+          },
+          "exterior": false
+        }
+      ],
+      "doors": [
+        {
+          "id": "d_entrance",
+          "position": {
+            "x": 1820,
+            "y": 8000
+          },
+          "width": 800,
+          "angle": 90,
+          "swing": 1,
+          "kind": "swing"
+        },
+        {
+          "id": "d_hall_ld",
+          "position": {
+            "x": 3800,
+            "y": 7280
+          },
+          "width": 800,
+          "angle": 0,
+          "swing": 1,
+          "kind": "sliding"
+        },
+        {
+          "id": "d_lavatory",
+          "position": {
+            "x": 5915,
+            "y": 7500
+          },
+          "width": 600,
+          "angle": 90,
+          "swing": 1,
+          "kind": "swing"
+        },
+        {
+          "id": "d_sanitary",
+          "position": {
+            "x": 6370,
+            "y": 6000
+          },
+          "width": 750,
+          "angle": 90,
+          "swing": 1,
+          "kind": "sliding"
+        },
+        {
+          "id": "d_laundry",
+          "position": {
+            "x": 6370,
+            "y": 4200
+          },
+          "width": 750,
+          "angle": 90,
+          "swing": 1,
+          "kind": "sliding"
+        },
+        {
+          "id": "d_wic_ld",
+          "position": {
+            "x": 6370,
+            "y": 2200
+          },
+          "width": 750,
+          "angle": 90,
+          "swing": 1,
+          "kind": "sliding"
+        },
+        {
+          "id": "d_wic_laundry",
+          "position": {
+            "x": 7280,
+            "y": 3640
+          },
+          "width": 750,
+          "angle": 0,
+          "swing": 1,
+          "kind": "sliding"
+        }
+      ],
+      "windows": [
+        {
+          "id": "win_pouch_n1",
+          "start": {
+            "x": 0,
+            "y": 1000
+          },
+          "end": {
+            "x": 0,
+            "y": 2000
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_pouch_n2",
+          "start": {
+            "x": 0,
+            "y": 3000
+          },
+          "end": {
+            "x": 0,
+            "y": 4500
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_pouch_n3",
+          "start": {
+            "x": 0,
+            "y": 5500
+          },
+          "end": {
+            "x": 0,
+            "y": 6500
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_kitchen",
+          "start": {
+            "x": 5000,
+            "y": 0
+          },
+          "end": {
+            "x": 5800,
+            "y": 0
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_pantry",
+          "start": {
+            "x": 7000,
+            "y": 0
+          },
+          "end": {
+            "x": 7800,
+            "y": 0
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_wic",
+          "start": {
+            "x": 8190,
+            "y": 2200
+          },
+          "end": {
+            "x": 8190,
+            "y": 3000
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_laundry",
+          "start": {
+            "x": 8190,
+            "y": 4200
+          },
+          "end": {
+            "x": 8190,
+            "y": 4800
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_sanitary",
+          "start": {
+            "x": 8190,
+            "y": 6000
+          },
+          "end": {
+            "x": 8190,
+            "y": 6600
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_bathroom",
+          "start": {
+            "x": 8190,
+            "y": 7800
+          },
+          "end": {
+            "x": 8190,
+            "y": 8400
+          },
+          "kind": "sliding"
+        },
+        {
+          "id": "win_entrance_s1",
+          "start": {
+            "x": 2000,
+            "y": 9100
+          },
+          "end": {
+            "x": 3000,
+            "y": 9100
+          },
+          "kind": "fixed"
+        },
+        {
+          "id": "win_entrance_s2",
+          "start": {
+            "x": 3800,
+            "y": 9100
+          },
+          "end": {
+            "x": 4800,
+            "y": 9100
+          },
+          "kind": "fixed"
+        },
+        {
+          "id": "win_hall_s",
+          "start": {
+            "x": 5000,
+            "y": 9100
+          },
+          "end": {
+            "x": 5800,
+            "y": 9100
+          },
+          "kind": "fixed"
+        }
+      ],
+      "fixtures": [
+        {
+          "id": "fx_bathtub",
+          "type": "bathtub",
+          "position": {
+            "x": 7000,
+            "y": 7500
+          },
+          "width": 1000,
+          "height": 1400
+        },
+        {
+          "id": "fx_toilet",
+          "type": "toilet",
+          "position": {
+            "x": 6100,
+            "y": 8200
+          },
+          "width": 500,
+          "height": 700
+        },
+        {
+          "id": "fx_sink_lavatory",
+          "type": "sink",
+          "position": {
+            "x": 6100,
+            "y": 7400
+          },
+          "width": 600,
+          "height": 500
+        },
+        {
+          "id": "fx_sink_kitchen",
+          "type": "kitchen_sink",
+          "position": {
+            "x": 4600,
+            "y": 200
+          },
+          "width": 800,
+          "height": 500
+        },
+        {
+          "id": "fx_stove",
+          "type": "stove",
+          "position": {
+            "x": 5800,
+            "y": 200
+          },
+          "width": 500,
+          "height": 500
+        },
+        {
+          "id": "fx_washer",
+          "type": "washer",
+          "position": {
+            "x": 7500,
+            "y": 4800
+          },
+          "width": 600,
+          "height": 600
+        }
+      ],
+      "stairs": [
+        {
+          "id": "st1",
+          "name": "Stairs",
+          "polygon": [
+            {
+              "x": 1820,
+              "y": 3640
+            },
+            {
+              "x": 2730,
+              "y": 3640
+            },
+            {
+              "x": 2730,
+              "y": 6370
+            },
+            {
+              "x": 1820,
+              "y": 6370
+            }
+          ],
+          "direction": "up",
+          "layout": "straight",
+          "orientation": "up"
+        }
+      ]
+    }
+  ]
+}

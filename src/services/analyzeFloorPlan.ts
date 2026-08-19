@@ -6,6 +6,7 @@ import { ANALYSIS_PROMPT } from './analysisPrompt'
 
 import { normalizeFloorPlan } from '../utils/floorPlanNormalize'
 import { extractGeminiText, parseAiJsonContent, type GeminiGenerateResponse } from '../utils/parseAiJson'
+import { parseNormalizedRegion, regionToCropRect } from '../utils/cropRegion'
 
 import {
 
@@ -194,6 +195,83 @@ function buildGenerationConfig(_quality: AnalysisQuality, model: string) {
 }
 
 
+
+const REGION_DETECT_PROMPT = `この建築図面の画像から、間取り（平面図）本体と、それを囲む寸法線・寸法数値までを含む矩形範囲を求めてください。
+タイトル欄・図面枠・建具表・仕上表・凡例・注記の文章は範囲に含めません。
+複数の平面図がある場合はすべてを含む範囲にしてください。
+座標は画像の左上を(0,0)、右下を(1000,1000)とする正規化座標で、JSONのみ返してください:
+{"x0": 数値, "y0": 数値, "x1": 数値, "y1": 数値}`
+
+/**
+ * 図面本体の範囲を Gemini に尋ねる（軽量な前処理呼び出し）。
+ * A3 図面はタイトル欄や建具表が面積の多くを占め、そのまま送ると
+ * 平面図に使える解像度が下がる。先に範囲を検出して切り出すことで、
+ * 同じ送信サイズでも図面本体の解像度を上げられる。
+ * 失敗したら null（呼び出し側は全体画像で続行）。
+ */
+async function detectDrawingRegion(
+  file: File,
+  apiKey: string | undefined
+): Promise<{ x0: number; y0: number; x1: number; y1: number } | null> {
+  try {
+    // 範囲検出は低解像度で十分
+    const { base64, mimeType } = await prepareImageForAnalysis(file, 1024)
+    const response = await fetchGeminiWithRetry(
+      `/v1beta/models/${GEMINI_MODEL_FLASH}:generateContent`,
+      {
+        method: 'POST',
+        apiKey,
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: REGION_DETECT_PROMPT }, { inlineData: { mimeType, data: base64 } }],
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0,
+            maxOutputTokens: 200,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        }),
+      }
+    )
+    if (!response.ok) return null
+    const data = (await response.json()) as GeminiGenerateResponse
+    const { text } = extractGeminiText(data)
+    return parseNormalizedRegion(parseAiJsonContent(text))
+  } catch {
+    return null
+  }
+}
+
+/** 元画像から矩形を切り出して新しい File にする。切り出す価値がなければ null */
+async function cropFileToRegion(
+  file: File,
+  region: { x0: number; y0: number; x1: number; y1: number }
+): Promise<File | null> {
+  const bitmap = await createImageBitmap(file)
+  try {
+    const rect = regionToCropRect(region, bitmap.width, bitmap.height)
+    if (!rect) return null
+    const canvas = document.createElement('canvas')
+    canvas.width = rect.width
+    canvas.height = rect.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillRect(0, 0, rect.width, rect.height)
+    ctx.drawImage(bitmap, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) return null
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '-cropped.png', {
+      type: 'image/png',
+    })
+  } finally {
+    bitmap.close()
+  }
+}
 
 /** そのまま JSON.parse できるか（できなければ = 応答が途中で切れて修復された） */
 
@@ -399,7 +477,21 @@ async function analyzeWithGemini(
 
   quality: AnalysisQuality
 
-): Promise<{ floorPlan: FloorPlan; modelUsed: string; truncated: boolean }> {
+): Promise<{ floorPlan: FloorPlan; modelUsed: string; truncated: boolean; autoCropped: boolean }> {
+
+  // 図面本体を切り出してから解析する（失敗時は全体画像のまま）
+  let workFile = file
+  let autoCropped = false
+  if (file.type.startsWith('image/')) {
+    const region = await detectDrawingRegion(file, apiKey)
+    if (region) {
+      const cropped = await cropFileToRegion(file, region).catch(() => null)
+      if (cropped) {
+        workFile = cropped
+        autoCropped = true
+      }
+    }
+  }
 
   const models =
 
@@ -419,9 +511,9 @@ async function analyzeWithGemini(
 
     try {
 
-      const { floorPlan, truncated } = await requestFloorPlan(file, apiKey, model, quality)
+      const { floorPlan, truncated } = await requestFloorPlan(workFile, apiKey, model, quality)
 
-      return { floorPlan, modelUsed: model, truncated }
+      return { floorPlan, modelUsed: model, truncated, autoCropped }
 
     } catch (error) {
 
@@ -511,7 +603,7 @@ export async function analyzeFloorPlan(
 
 
 
-  const { floorPlan, modelUsed, truncated } = await analyzeWithGemini(
+  const { floorPlan, modelUsed, truncated, autoCropped } = await analyzeWithGemini(
 
     file,
 
@@ -531,6 +623,9 @@ export async function analyzeFloorPlan(
 
     : `標準モード（${modelUsed}）で解析しました`,
 
+    ...(autoCropped
+      ? ['図面本体を自動で切り出し、解像度を上げて解析しました']
+      : []),
     ...(truncated
 
       ? ['AIの応答が途中で切れたため、部屋や扉が一部欠けている可能性があります']
