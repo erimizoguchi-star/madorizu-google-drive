@@ -110,9 +110,14 @@ export function FloorPlanView({
   const floorsRef = useRef<HTMLDivElement | null>(null)
   const [calibFirst, setCalibFirst] = useState<{ client: Point; local: Point } | null>(null)
 
-  useEffect(() => {
+  // 2点合わせを終了・中断したら1点目の記録を破棄する。
+  // effect で setState すると余計な再描画が走るため、React 推奨の
+  // 「前回値と比較してレンダー中に調整する」パターンで書く
+  const [prevCalibrating, setPrevCalibrating] = useState(calibrating)
+  if (calibrating !== prevCalibrating) {
+    setPrevCalibrating(calibrating)
     if (!calibrating) setCalibFirst(null)
-  }, [calibrating])
+  }
 
   useEffect(() => {
     onOverlayCalibrationStep?.(calibFirst ? 1 : 0)

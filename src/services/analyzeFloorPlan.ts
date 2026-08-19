@@ -383,7 +383,7 @@ async function requestFloorPlan(
 
     if (error instanceof Error) throw error
 
-    throw new Error('AIの応答を間取データに変換できませんでした。')
+    throw new Error('AIの応答を間取データに変換できませんでした。', { cause: error })
 
   }
 

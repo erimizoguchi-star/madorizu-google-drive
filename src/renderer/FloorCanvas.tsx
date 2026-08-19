@@ -1,4 +1,4 @@
-import { useRef, useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import type { Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
@@ -127,9 +127,11 @@ export function FloorCanvas({
   // ドラッグしている間は範囲を固定し、離した時点で新しい範囲に合わせ直す。
   const dragging = useSyncExternalStore(subscribeSvgDrag, isSvgDragging, () => false)
   const liveBounds = getBounds(floor)
-  const frozenBounds = useRef(liveBounds)
-  if (!dragging) frozenBounds.current = liveBounds
-  const bounds = dragging ? frozenBounds.current : liveBounds
+  // dragging が false→true に変わった瞬間の範囲を memo に固定する。
+  // ドラッグ中は floor が変わっても再計算されないのが狙いなので、floor は依存に入れない
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const boundsAtDragStart = useMemo(() => getBounds(floor), [dragging])
+  const bounds = dragging ? boundsAtDragStart : liveBounds
 
   const width = bounds.maxX - bounds.minX + padding * 2
   const height = bounds.maxY - bounds.minY + padding * 2

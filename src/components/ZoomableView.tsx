@@ -68,7 +68,10 @@ export function ZoomableView({
     panning: boolean
   } | null>(null)
 
-  stateRef.current = { zoom, pan }
+  useEffect(() => {
+    // ホイール等のイベントハンドラから最新の zoom / pan を読むための ref
+    stateRef.current = { zoom, pan }
+  })
 
   const applyZoomAtPoint = useCallback((nextZoom: number, clientX: number, clientY: number) => {
     const viewport = viewportRef.current

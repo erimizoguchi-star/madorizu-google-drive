@@ -117,11 +117,13 @@ export async function fetchGemini(
   } catch (error) {
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       throw new Error(
-        'AI解析がタイムアウトしました（5分）。画像サイズを小さくするか、しばらく待ってから再試行してください。'
+        'AI解析がタイムアウトしました（5分）。画像サイズを小さくするか、しばらく待ってから再試行してください。',
+        { cause: error }
       )
     }
     throw new Error(
-      'APIへの接続に失敗しました。npm run dev で起動した http://localhost:5173 からアクセスしているか確認してください。'
+      'APIへの接続に失敗しました。npm run dev で起動した http://localhost:5173 からアクセスしているか確認してください。',
+      { cause: error }
     )
   }
 }

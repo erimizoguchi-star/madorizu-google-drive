@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import type { Fixture, Point } from '../types/floorPlan'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { SELECTION } from './styles'
@@ -49,7 +49,11 @@ export function FixtureEditHandles({
   const cy = position.y + height / 2
 
   const latest = useRef(fixture)
-  latest.current = fixture
+  useEffect(() => {
+    // ドラッグ中の再描画をまたいで最新の設備を参照するための ref。
+    // レンダー中に書くと lint（refs during render）に反するので effect で更新する
+    latest.current = fixture
+  })
 
   const toFloorPoint = (canvasPos: Point, center: Point, angleDeg: number): Point =>
     canvasToFloor(unrotate(canvasPos, center.x, center.y, angleDeg), floorOffset)
@@ -78,8 +82,12 @@ export function FixtureEditHandles({
     })
   }
 
-  const startResize = (e: React.PointerEvent<SVGRectElement>, corner: FixtureCorner) => {
+  // どの角かは data-corner 属性で受け取る。ラップした arrow で渡すと
+  // lint（react-hooks/refs）が「レンダー中の ref 読み取り」と誤検知するため
+  const startResize = (e: React.PointerEvent<SVGRectElement>) => {
     if (!onResize) return
+    const corner = e.currentTarget.dataset.corner as FixtureCorner | undefined
+    if (!corner) return
     e.stopPropagation()
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
@@ -130,7 +138,8 @@ export function FixtureEditHandles({
             stroke={SELECTION.stroke}
             strokeWidth={1.5}
             style={{ cursor }}
-            onPointerDown={(e) => startResize(e, corner)}
+            data-corner={corner}
+            onPointerDown={startResize}
           />
         ))}
     </g>

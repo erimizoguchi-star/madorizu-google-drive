@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { FloorPlan } from '../types/floorPlan'
 import {
   deleteSavedPlan,
@@ -22,13 +22,9 @@ export function SavedPlansPanel({
   onCurrentIdChange,
   onLoad,
 }: SavedPlansPanelProps) {
-  const [plans, setPlans] = useState<SavedPlan[]>([])
+  const [plans, setPlans] = useState<SavedPlan[]>(() => listSavedPlans())
   const [name, setName] = useState('')
   const [message, setMessage] = useState('')
-
-  useEffect(() => {
-    setPlans(listSavedPlans())
-  }, [])
 
   const refresh = () => setPlans(listSavedPlans())
 

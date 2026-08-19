@@ -188,7 +188,7 @@ function snapVertexToEdge(p: Point, seg: OrthoSeg, newFixed: number): Point {
 }
 
 export function snapPolygonsTogether(polygons: Point[][]): Point[][] {
-  let polys = polygons.map((poly) => poly.map((p) => ({ ...p })))
+  const polys = polygons.map((poly) => poly.map((p) => ({ ...p })))
 
   for (let i = 0; i < polys.length; i++) {
     for (let j = i + 1; j < polys.length; j++) {

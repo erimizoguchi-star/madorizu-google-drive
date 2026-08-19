@@ -409,8 +409,8 @@ export function addWallSegment(
   const e = snapPoint(end)
   const dx = Math.abs(s.x - e.x)
   const dy = Math.abs(s.y - e.y)
-  let startPt = s
-  let endPt = e
+  let startPt: Point
+  let endPt: Point
   if (dx >= dy) {
     const y = round((s.y + e.y) / 2)
     startPt = { x: round(s.x), y }

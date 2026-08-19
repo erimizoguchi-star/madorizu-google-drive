@@ -173,7 +173,7 @@ export function computeLabelLayout(source: LabelSource): RoomLabelLayout | null 
       fontWeight: LABEL.areaFontWeight,
       fill: LABEL.noteColor,
       offset: source.noteLabelOffset,
-      baseY: ys[yi++],
+      baseY: ys[yi],
     })
   }
 

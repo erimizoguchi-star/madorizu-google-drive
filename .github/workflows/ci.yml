@@ -1,0 +1,31 @@
+# push / PR のたびに GitHub 上で自動チェックする。
+# 失敗するとコミット一覧・PR に赤印が付く（壊れた main を防ぐ）。
+name: CI
+
+on:
+  push:
+    branches: [main, feature-update]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: テスト
+        run: npm test
+
+      - name: 型チェック + ビルド
+        run: npm run build

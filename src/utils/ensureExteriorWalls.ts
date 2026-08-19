@@ -234,7 +234,7 @@ export function ensureExteriorWalls(floor: Floor): Floor {
   )
   if (boundary.length === 0) return floor
 
-  let walls = floor.walls.map((wall) => {
+  const walls = floor.walls.map((wall) => {
     if (boundary.some((seg) => wallCoversSegment(wall, seg))) {
       return { ...wall, exterior: true }
     }
