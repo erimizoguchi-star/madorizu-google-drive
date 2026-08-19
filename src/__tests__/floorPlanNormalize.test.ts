@@ -74,6 +74,71 @@ describe('扉を壁に合わせる補正（fitDoorsToWalls）', () => {
   })
 })
 
+describe('窓を壁に載せ替える補正（fitWindowsToWalls）', () => {
+  it('壁から浮いた窓（実測130mm相当のズレ）を壁の線上に載せる', () => {
+    const plan = makePlan({
+      rooms: [mmRoom()],
+      // 上辺の壁 y=0 に対し、y=130 に浮いている
+      windows: [{ id: 'w1', start: { x: 1000, y: 130 }, end: { x: 2000, y: 130 }, kind: 'sliding' }],
+    })
+    const out = normalizeFloorPlan(plan)
+    const w = out.floors[0].windows[0]
+    expect(w.start.y).toBe(0)
+    expect(w.end.y).toBe(0)
+    // 長さは保たれる（1000mm = 100単位）
+    expect(Math.abs(w.end.x - w.start.x)).toBeCloseTo(100, 5)
+  })
+
+  it('壁の端からはみ出す窓は、長さを保ったまま壁内に収める', () => {
+    const plan = makePlan({
+      rooms: [mmRoom()],
+      // 上辺の壁は x 0〜9000。8500〜9500 では 500mm はみ出す
+      windows: [{ id: 'w1', start: { x: 8500, y: 0 }, end: { x: 9500, y: 0 }, kind: 'sliding' }],
+    })
+    const out = normalizeFloorPlan(plan)
+    const w = out.floors[0].windows[0]
+    expect(Math.max(w.start.x, w.end.x)).toBeLessThanOrEqual(900)
+    expect(Math.abs(w.end.x - w.start.x)).toBeCloseTo(100, 5)
+  })
+
+  it('壁より長い窓は壁の長さまで詰める', () => {
+    const plan = makePlan({
+      rooms: [
+        makeRoom('r1', rect(0, 0, 2000, 7000)),
+        makeRoom('r2', rect(2000, 0, 9000, 7000)),
+      ],
+      // r1 の上辺（幅2000mm）に 3000mm の窓
+      windows: [{ id: 'w1', start: { x: -500, y: 0 }, end: { x: 2500, y: 0 }, kind: 'sliding' }],
+    })
+    const out = normalizeFloorPlan(plan)
+    const w = out.floors[0].windows[0]
+    expect(Math.abs(w.end.x - w.start.x)).toBeLessThanOrEqual(900)
+  })
+
+  it('start/end の並び順を保つ（開く向き outward の基準を壊さない）', () => {
+    const plan = makePlan({
+      rooms: [mmRoom()],
+      // end → start の順（x が減る向き）で浮いている窓
+      windows: [
+        { id: 'w1', start: { x: 2000, y: 130 }, end: { x: 1000, y: 130 }, kind: 'awning', outward: -1 },
+      ],
+    })
+    const out = normalizeFloorPlan(plan)
+    const w = out.floors[0].windows[0]
+    expect(w.start.x).toBeGreaterThan(w.end.x) // 並び順そのまま
+    expect(w.outward).toBe(-1) // 手動設定も保持
+  })
+
+  it('壁から大きく離れた窓（600mm超）は動かさない', () => {
+    const plan = makePlan({
+      rooms: [mmRoom()],
+      windows: [{ id: 'w1', start: { x: 1000, y: 1500 }, end: { x: 2000, y: 1500 }, kind: 'sliding' }],
+    })
+    const out = normalizeFloorPlan(plan)
+    expect(out.floors[0].windows[0].start.y).toBe(150)
+  })
+})
+
 describe('窓の開く向きの自動判定（orientWindowsOutward）', () => {
   it('すべり出し窓は建物の外側を向く（上辺と下辺で逆向きになる）', () => {
     const plan = makePlan({

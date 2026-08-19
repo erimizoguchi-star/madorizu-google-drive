@@ -357,6 +357,8 @@ function sanitizeFixture(fixture: Fixture, index: number, useMm: boolean): Fixtu
 }
 
 const DOOR_ANGLE_SNAP_TOLERANCE_SVG = mmToSvgUnits(400)
+// 窓は扉より大きくずれる（実図面の実測で数百mm）ため、許容を広めに取る
+const WINDOW_SNAP_TOLERANCE_SVG = mmToSvgUnits(600)
 const SEGMENT_EPS = 0.01
 
 function distanceToSegment(p: Point, a: Point, b: Point): number {
@@ -422,6 +424,70 @@ function fitDoorsToWalls(floor: Floor): Floor {
   })
 
   return { ...floor, doors }
+}
+
+/**
+ * 窓を、最も近い壁の線上に載せ替える。
+ *
+ * AI の出力では窓の位置が壁から数百 mm ずれることが多く（実図面の実測で
+ * 130〜500mm）、そのままだと壁に開口が空かず、窓記号だけが浮いて描画される。
+ * - 窓の中点から最寄りの壁を探し、壁の線上へ投影する
+ * - 壁の端からはみ出す場合は壁内に収め、壁より長い窓は壁の長さまで詰める
+ * - start→end の並び順（＝開く向き outward の基準）は元のまま保つ
+ */
+function fitWindowsToWalls(floor: Floor): Floor {
+  if (floor.windows.length === 0 || floor.walls.length === 0) return floor
+
+  const windows = floor.windows.map((win) => {
+    const mid = {
+      x: (win.start.x + win.end.x) / 2,
+      y: (win.start.y + win.end.y) / 2,
+    }
+
+    let nearest: { distance: number; wall: Wall; horizontal: boolean } | null = null
+    for (const wall of floor.walls) {
+      const dx = Math.abs(wall.end.x - wall.start.x)
+      const dy = Math.abs(wall.end.y - wall.start.y)
+      if (dx < SEGMENT_EPS && dy < SEGMENT_EPS) continue
+      const distance = distanceToSegment(mid, wall.start, wall.end)
+      if (!nearest || distance < nearest.distance) {
+        nearest = { distance, wall, horizontal: dx >= dy }
+      }
+    }
+
+    if (!nearest || nearest.distance > WINDOW_SNAP_TOLERANCE_SVG) return win
+
+    const { wall, horizontal } = nearest
+    const axis = horizontal ? 'x' : 'y'
+    const cross = horizontal ? 'y' : 'x'
+    const lo = Math.min(wall.start[axis], wall.end[axis])
+    const hi = Math.max(wall.start[axis], wall.end[axis])
+    const span = hi - lo
+    if (span < SEGMENT_EPS) return win
+
+    // 窓の長さは元の全長を保ち、壁より長ければ壁に収まるまで詰める
+    const length = Math.min(
+      Math.hypot(win.end.x - win.start.x, win.end.y - win.start.y),
+      span
+    )
+    if (length < SEGMENT_EPS) return win
+
+    // 中心を保って壁内にクランプ
+    const center = (win.start[axis] + win.end[axis]) / 2
+    let startAlong = center - length / 2
+    if (startAlong < lo) startAlong = lo
+    if (startAlong + length > hi) startAlong = hi - length
+
+    const crossValue = wall.start[cross]
+    // 並び順を保持（outward は start→end 方向が基準のため、入れ替えると向きが反転する）
+    const forward = win.end[axis] >= win.start[axis]
+    const a = { [axis]: startAlong, [cross]: crossValue } as unknown as Point
+    const b = { [axis]: startAlong + length, [cross]: crossValue } as unknown as Point
+
+    return { ...win, start: forward ? a : b, end: forward ? b : a }
+  })
+
+  return { ...floor, windows }
 }
 
 const STAIR_LAYOUTS: StairLayout[] = ['straight', 'turn-right', 'turn-left']
@@ -490,7 +556,7 @@ function sanitizeFloor(floor: Floor, index: number, useMm: boolean): Floor {
       .filter((stair): stair is Stair => stair != null),
   })
 
-  return orientWindowsOutward(fitDoorsToWalls(closeCoverageGaps(draft)))
+  return orientWindowsOutward(fitWindowsToWalls(fitDoorsToWalls(closeCoverageGaps(draft))))
 }
 
 export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {
