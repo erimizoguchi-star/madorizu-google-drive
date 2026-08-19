@@ -440,9 +440,10 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
   if (polygon.length < 3) return null
   const layout = sanitizeStairLayout(stair.layout)
   const orientation = sanitizeStairOrientation(stair.orientation)
+  // 50mm 刻みに丸めると標準幅 910mm が 900mm に化けるため、整数化だけにする
   const widthMm =
     typeof stair.widthMm === 'number' && stair.widthMm > 0
-      ? snapMm(stair.widthMm)
+      ? Math.round(stair.widthMm)
       : STAIR_DEFAULT_WIDTH_MM
   const preparedPolygon = useMm ? prepareMmPolygon(polygon) : polygon
   const scaledPolygon = useMm ? scalePolygon(preparedPolygon) : preparedPolygon
@@ -496,6 +497,8 @@ export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {
   const draft: FloorPlan = {
     title: plan.title || '間取図',
     scaleMm: plan.scaleMm ?? 100,
+    // 単位マーカーを引き継がないと planUsesMmCoordinates に届かず、推定に落ちてしまう
+    ...(plan.coordUnits ? { coordUnits: plan.coordUnits } : {}),
     floors: (plan.floors ?? []).map((floor, i) => ({
       ...floor,
       rooms: floor.rooms ?? [],
