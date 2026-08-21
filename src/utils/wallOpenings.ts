@@ -3,6 +3,8 @@ import { WALL } from '../renderer/styles'
 
 const EPS = 0.08
 const OPENING_PAD = 0.15
+/** 開口端が壁線からこれ以内なら「壁上」とみなす（SVG単位） */
+const DEFAULT_TOLERANCE = 6
 
 export type WallSegment = { start: Point; end: Point }
 
@@ -12,6 +14,17 @@ function dist(a: Point, b: Point): number {
 
 function lerp(a: Point, b: Point, t: number): Point {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+}
+
+function segmentAngleDeg(start: Point, end: Point): number {
+  return (Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI
+}
+
+/** 壁沿い向きが平行か（0°差または180°差） */
+export function anglesParallel(aDeg: number, bDeg: number, tolDeg = 12): boolean {
+  const norm = (d: number) => ((d % 180) + 180) % 180
+  const d = Math.abs(norm(aDeg) - norm(bDeg))
+  return d <= tolDeg || d >= 180 - tolDeg
 }
 
 /** 点が壁線分上にあるときのパラメータ t（0〜1）。離れていれば null */
@@ -45,41 +58,31 @@ export type OpeningInterval = {
   id: string
 }
 
-/** 壁上の扉・窓開口を t 区間として収集 */
+/**
+ * 壁上の扉・窓開口を t 区間として収集。
+ * 扉は「壁と平行」かつ「両端が壁上」のときだけ切る。
+ * （角付近で隣接する無関係な壁まで切らない）
+ */
 export function collectWallOpenings(
   wall: Wall,
   doors: Door[],
   windows: Window[],
-  tolerance = 12
+  tolerance = DEFAULT_TOLERANCE
 ): OpeningInterval[] {
   const intervals: OpeningInterval[] = []
   const wallLen = dist(wall.start, wall.end)
   if (wallLen < EPS) return intervals
+  const wallAng = segmentAngleDeg(wall.start, wall.end)
 
   for (const door of doors) {
-    if ((door.kind ?? 'swing') === 'opening') {
-      // 開口も壁を切る
-    }
+    if (!anglesParallel(door.angle, wallAng)) continue
     const { a, b } = doorEndpoints(door)
     const ta = projectPointOnWall(wall, a, tolerance)
     const tb = projectPointOnWall(wall, b, tolerance)
-    if (ta == null && tb == null) continue
-    let t0: number
-    let t1: number
-    if (ta != null && tb != null) {
-      t0 = Math.min(ta, tb)
-      t1 = Math.max(ta, tb)
-    } else if (ta != null) {
-      const along = door.width / wallLen
-      t0 = Math.min(ta, ta + along)
-      t1 = Math.max(ta, ta + along)
-    } else {
-      const along = door.width / wallLen
-      t0 = Math.min(tb!, tb! - along)
-      t1 = Math.max(tb!, tb! - along)
-    }
-    t0 = Math.max(0, t0 - OPENING_PAD / wallLen)
-    t1 = Math.min(1, t1 + OPENING_PAD / wallLen)
+    // 片端だけ近い（角の接点）では切らない — 両端がこの壁上にあるときだけ
+    if (ta == null || tb == null) continue
+    const t0 = Math.max(0, Math.min(ta, tb) - OPENING_PAD / wallLen)
+    const t1 = Math.min(1, Math.max(ta, tb) + OPENING_PAD / wallLen)
     if (t1 - t0 > 0.01) intervals.push({ t0, t1, kind: 'door', id: door.id })
   }
 
@@ -87,6 +90,9 @@ export function collectWallOpenings(
     const ta = projectPointOnWall(wall, win.start, tolerance)
     const tb = projectPointOnWall(wall, win.end, tolerance)
     if (ta == null || tb == null) continue
+    // 窓の辺も壁と平行であること
+    const winAng = segmentAngleDeg(win.start, win.end)
+    if (!anglesParallel(winAng, wallAng)) continue
     const t0 = Math.max(0, Math.min(ta, tb) - OPENING_PAD / wallLen)
     const t1 = Math.min(1, Math.max(ta, tb) + OPENING_PAD / wallLen)
     if (t1 - t0 > 0.01) intervals.push({ t0, t1, kind: 'window', id: win.id })

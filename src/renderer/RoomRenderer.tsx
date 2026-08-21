@@ -7,7 +7,7 @@ import type { LabelLineKind } from './roomLabelLayout'
 import { resolveRoomFillColor, resolveRoomFillPattern } from './roomFill'
 import { RoomPatternOverlay } from './roomPatterns'
 import { RoomLabels } from './RoomLabels'
-import { attachSvgPointerDrag, canvasToFloor } from './svgCoords'
+import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
 
 interface RoomRendererProps {
   room: Room
@@ -60,18 +60,12 @@ export function RoomRenderer({
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
 
-    const canvasPos = (() => {
-      const pt = svg.createSVGPoint()
-      pt.x = e.clientX
-      pt.y = e.clientY
-      const ctm = svg.getScreenCTM()
-      if (!ctm) return null
-      return pt.matrixTransform(ctm.inverse())
-    })()
+    // 移動中と同じ clientToSvg を使う（CTM だと拡大・パン時に基点がずれる）
+    const canvasPos = clientToSvg(svg, e.clientX, e.clientY)
     if (!canvasPos) return
 
     originRef.current = {
-      pointerFloor: canvasToFloor({ x: canvasPos.x, y: canvasPos.y }, floorOffset),
+      pointerFloor: canvasToFloor(canvasPos, floorOffset),
       polygonFloor: toFloorPolygon(room.polygon),
     }
 

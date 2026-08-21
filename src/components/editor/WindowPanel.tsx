@@ -1,4 +1,4 @@
-import { WINDOW_KIND_OPTIONS, windowKindLabel } from '../../constants/windowOptions'
+import { WINDOW_KIND_OPTIONS, normalizeWindowKind, windowKindLabel } from '../../constants/windowOptions'
 import type { FloorPlan, WindowKind } from '../../types/floorPlan'
 import {
   deleteWindow,
@@ -8,6 +8,7 @@ import {
   updateWindow,
 } from '../../utils/floorPlanEdit'
 import { hasWindowDirection } from '../../utils/windowOrientation'
+import { svgUnitsToMm } from '../../utils/roomGeometry'
 
 interface WindowPanelProps {
   floorPlan: FloorPlan
@@ -34,17 +35,22 @@ export function WindowPanel({ floorPlan, selected, onSelect, onChange }: WindowP
 
   if (!currentWindow) return null
 
+  const win = currentWindow.window
+  const widthMm = Math.round(
+    svgUnitsToMm(Math.hypot(win.end.x - win.start.x, win.end.y - win.start.y))
+  )
+
   return (
         <div className="room-editor-form">
           <h4>窓の詳細</h4>
           <p className="editor-offset-hint">
-            両端の●で幅を調整、中央の○で平行移動できます。種類を変えると図上の記号が変わります。
+            壁に沿って移動します。両端の●または下の幅入力で寸法を変えられます。
           </p>
           <div className="editor-field">
             <label htmlFor="window-kind">種類</label>
             <select
               id="window-kind"
-              value={currentWindow.window.kind ?? 'sliding'}
+              value={normalizeWindowKind(currentWindow.window.kind)}
               onChange={(e) => handleWindowField({ kind: e.target.value as WindowKind })}
             >
               {WINDOW_KIND_OPTIONS.map((opt) => (
@@ -55,10 +61,27 @@ export function WindowPanel({ floorPlan, selected, onSelect, onChange }: WindowP
             </select>
             <p className="editor-field-hint">
               {
-                WINDOW_KIND_OPTIONS.find((o) => o.value === (currentWindow.window.kind ?? 'sliding'))
-                  ?.hint
+                WINDOW_KIND_OPTIONS.find(
+                  (o) => o.value === normalizeWindowKind(currentWindow.window.kind)
+                )?.hint
               }
             </p>
+          </div>
+          <div className="editor-field">
+            <label htmlFor="window-width">幅（mm）</label>
+            <input
+              id="window-width"
+              type="number"
+              step={50}
+              min={300}
+              max={6000}
+              value={widthMm}
+              onChange={(e) => {
+                const next = parseInt(e.target.value, 10)
+                if (Number.isNaN(next)) return
+                handleWindowField({ widthMm: next })
+              }}
+            />
           </div>
 
           {hasWindowDirection(currentWindow.window.kind) && (

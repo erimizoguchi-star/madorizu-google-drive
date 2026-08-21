@@ -45,7 +45,7 @@ export function DoorPanel({ floorPlan, selected, onSelect, onChange }: DoorPanel
             {(currentDoor.door.kind ?? 'swing') === 'opening' ? '開口部の詳細' : '扉の詳細'}
           </h4>
           <p className="editor-offset-hint">
-            ドラッグで移動。種類・開き方向を変えると図上の記号がすぐ変わります。
+            ドラッグで壁に沿って移動（壁から外れません）。幅・種類・開き方向を変えられます。
           </p>
           <div className="editor-field">
             <label htmlFor="door-kind">種類</label>
@@ -79,6 +79,7 @@ export function DoorPanel({ floorPlan, selected, onSelect, onChange }: DoorPanel
                 handleDoorField({ widthMm })
               }}
             />
+            <p className="editor-field-hint">開口の幅です。壁の長さを超えない範囲で自動調整されます。</p>
           </div>
           <div className="editor-field">
             <label htmlFor="door-angle">戸の向き（壁沿い）</label>

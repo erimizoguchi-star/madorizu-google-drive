@@ -1,4 +1,5 @@
-import type { Floor, FloorPlan, Point, Wall } from '../types/floorPlan'
+import type { Floor, FloorPlan, Point, Wall, Window } from '../types/floorPlan'
+import { snapDoorOntoNearestWall, snapWindowOntoNearestWall } from './floorPlanAdd'
 import { mmToSvgUnits, snapSvgToMmGrid, svgUnitsToMm } from './roomGeometry'
 
 const EPS = 0.05
@@ -175,9 +176,16 @@ export function setWindowEndpointsOnFloor(
 ): Floor {
   return {
     ...floor,
-    windows: floor.windows.map((win) =>
-      win.id === windowId ? { ...win, start: { ...start }, end: { ...end } } : win
-    ),
+    windows: floor.windows.map((win) => {
+      if (win.id !== windowId) return win
+      const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }
+      const draft = { ...win, start, end }
+      return snapWindowOntoNearestWall(floor, draft, mid) ?? {
+        ...win,
+        start: snapPoint(start),
+        end: snapPoint(end),
+      }
+    }),
   }
 }
 
@@ -189,12 +197,19 @@ export function translateWallOnFloor(floor: Floor, wallId: string, delta: Point)
 }
 
 export function moveDoorOnFloor(floor: Floor, doorId: string, position: Point): Floor {
-  const snapped = snapPoint(position)
   return {
     ...floor,
-    doors: floor.doors.map((door) =>
-      door.id === doorId ? { ...door, position: { x: round(snapped.x), y: round(snapped.y) } } : door
-    ),
+    doors: floor.doors.map((door) => {
+      if (door.id !== doorId) return door
+      // ポインタを開口中央付近として壁へ吸着（壁から外れない）
+      const rad = (door.angle * Math.PI) / 180
+      const centerHint = {
+        x: position.x + Math.cos(rad) * (door.width / 2),
+        y: position.y + Math.sin(rad) * (door.width / 2),
+      }
+      const seated = snapDoorOntoNearestWall(floor, door, centerHint)
+      return seated ?? door
+    }),
   }
 }
 
@@ -204,29 +219,40 @@ export function moveWindowEndpointOnFloor(
   endpoint: 'start' | 'end',
   position: Point
 ): Floor {
-  const snapped = snapPoint(position)
   return {
     ...floor,
     windows: floor.windows.map((win) => {
       if (win.id !== windowId) return win
-      const next = { x: round(snapped.x), y: round(snapped.y) }
-      if (endpoint === 'start') return { ...win, start: next }
-      return { ...win, end: next }
+      const other = endpoint === 'start' ? win.end : win.start
+      const len = Math.max(
+        Math.hypot(position.x - other.x, position.y - other.y),
+        mmToSvgUnits(300)
+      )
+      const mid = {
+        x: (position.x + other.x) / 2,
+        y: (position.y + other.y) / 2,
+      }
+      const half = len / 2
+      const draft: Window = {
+        ...win,
+        start: { x: mid.x - half, y: mid.y },
+        end: { x: mid.x + half, y: mid.y },
+      }
+      return snapWindowOntoNearestWall(floor, draft, mid) ?? win
     }),
   }
 }
 
 export function translateWindowOnFloor(floor: Floor, windowId: string, delta: Point): Floor {
-  const d = snapPoint(delta)
   return {
     ...floor,
     windows: floor.windows.map((win) => {
       if (win.id !== windowId) return win
-      return {
-        ...win,
-        start: { x: round(win.start.x + d.x), y: round(win.start.y + d.y) },
-        end: { x: round(win.end.x + d.x), y: round(win.end.y + d.y) },
+      const mid = {
+        x: (win.start.x + win.end.x) / 2 + delta.x,
+        y: (win.start.y + win.end.y) / 2 + delta.y,
       }
+      return snapWindowOntoNearestWall(floor, win, mid) ?? win
     }),
   }
 }
@@ -239,6 +265,18 @@ export function moveFixtureOnFloor(floor: Floor, fixtureId: string, position: Po
       fixture.id === fixtureId
         ? { ...fixture, position: { x: round(snapped.x), y: round(snapped.y) } }
         : fixture
+    ),
+  }
+}
+
+export function moveTextOnFloor(floor: Floor, textId: string, position: Point): Floor {
+  const snapped = snapPoint(position)
+  return {
+    ...floor,
+    texts: (floor.texts ?? []).map((label) =>
+      label.id === textId
+        ? { ...label, position: { x: round(snapped.x), y: round(snapped.y) } }
+        : label
     ),
   }
 }
@@ -332,6 +370,14 @@ export function moveFixture(
   position: Point
 ): FloorPlan {
   return updateFloor(floorPlan, ref, (floor) => moveFixtureOnFloor(floor, ref.fixtureId, position))
+}
+
+export function moveTextLabel(
+  floorPlan: FloorPlan,
+  ref: FloorRef & { textId: string },
+  position: Point
+): FloorPlan {
+  return updateFloor(floorPlan, ref, (floor) => moveTextOnFloor(floor, ref.textId, position))
 }
 
 /** 設備の四隅。ドラッグした角の対角は動かさない */

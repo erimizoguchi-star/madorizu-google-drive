@@ -89,8 +89,6 @@ export function DoorRenderer({
   const half = door.width / 2
   /** 親子戸の親側比率 */
   const parentRatio = 0.62
-  const parentEndX = x1 + door.width * parentRatio * cos
-  const parentEndY = y1 + door.width * parentRatio * sin
 
   const canDrag = editable && onMove && floorOffset
   const stroke = selected ? SELECTION.stroke : DOOR.color
@@ -122,6 +120,19 @@ export function DoorRenderer({
     onSelect?.(door.id)
   }
 
+  // 開き系・折れ戸は開口を横切る直線を描かない（チャート準拠）
+  const drawThroughLeaf =
+    kind === 'opening' ||
+    kind === 'sliding' ||
+    kind === 'double_sliding' ||
+    kind === 'pocket'
+
+  const swingDir = door.swing
+  const openLeaf = (hx: number, hy: number, leafLen: number) => ({
+    x: hx + nx * swingDir * leafLen,
+    y: hy + ny * swingDir * leafLen,
+  })
+
   return (
     <g
       className={`door ${selected ? 'door-selected' : ''} ${editable ? 'door-editable' : ''} door-${kind}`}
@@ -138,47 +149,106 @@ export function DoorRenderer({
         strokeLinecap="butt"
         pointerEvents="none"
       />
-      <line
-        x1={x1}
-        y1={y1}
-        x2={x2}
-        y2={y2}
-        stroke={stroke}
-        strokeWidth={kind === 'opening' ? leafStroke + 0.3 : leafStroke}
-        strokeDasharray={kind === 'opening' ? '5 3' : undefined}
-        strokeLinecap="butt"
-        pointerEvents="none"
-      />
+      {drawThroughLeaf && (
+        <line
+          x1={x1}
+          y1={y1}
+          x2={x2}
+          y2={y2}
+          stroke={stroke}
+          strokeWidth={kind === 'opening' ? leafStroke + 0.3 : leafStroke}
+          strokeDasharray={kind === 'opening' ? '5 3' : undefined}
+          strokeLinecap="butt"
+          pointerEvents="none"
+        />
+      )}
 
-      {kind === 'swing' && swingArc(x1, y1, door.width, rad, door.swing, stroke, !!selected)}
+      {kind === 'swing' && (
+        <>
+          {/* 片開き戸: 開いた戸（壁に垂直）＋1/4円弧 */}
+          {(() => {
+            const tip = openLeaf(x1, y1, door.width)
+            return (
+              <line
+                x1={x1}
+                y1={y1}
+                x2={tip.x}
+                y2={tip.y}
+                stroke={stroke}
+                strokeWidth={leafStroke}
+                strokeLinecap="butt"
+                pointerEvents="none"
+              />
+            )
+          })()}
+          {swingArc(x1, y1, door.width, rad, door.swing, stroke, !!selected)}
+        </>
+      )}
 
       {kind === 'double_swing' && (
         <>
-          <line
-            x1={midX + nx * DOOR.endTick * 0.7}
-            y1={midY + ny * DOOR.endTick * 0.7}
-            x2={midX - nx * DOOR.endTick * 0.7}
-            y2={midY - ny * DOOR.endTick * 0.7}
-            stroke={stroke}
-            strokeWidth={detailStroke}
-            pointerEvents="none"
-          />
-          {swingArc(x1, y1, half, rad, door.swing, stroke, !!selected)}
-          {swingArc(x2, y2, half, rad + Math.PI, door.swing, stroke, !!selected)}
+          {/* 両開き戸（観音開き）: 左右の戸が同じ側へ開き、弧が中央で接する */}
+          {(() => {
+            const tipL = openLeaf(x1, y1, half)
+            const tipR = openLeaf(x2, y2, half)
+            // 右扉は壁方向が逆なので、同じ開閉側にするため swing を反転
+            const rightSwing = (swingDir === 1 ? -1 : 1) as 1 | -1
+            return (
+              <>
+                <line
+                  x1={x1}
+                  y1={y1}
+                  x2={tipL.x}
+                  y2={tipL.y}
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+                <line
+                  x1={x2}
+                  y1={y2}
+                  x2={tipR.x}
+                  y2={tipR.y}
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+                {swingArc(x1, y1, half, rad, swingDir, stroke, !!selected)}
+                {swingArc(x2, y2, half, rad + Math.PI, rightSwing, stroke, !!selected)}
+              </>
+            )
+          })()}
         </>
       )}
 
       {kind === 'parent_child' && (
         <>
-          <line
-            x1={parentEndX + nx * DOOR.endTick * 0.7}
-            y1={parentEndY + ny * DOOR.endTick * 0.7}
-            x2={parentEndX - nx * DOOR.endTick * 0.7}
-            y2={parentEndY - ny * DOOR.endTick * 0.7}
-            stroke={stroke}
-            strokeWidth={detailStroke}
-            pointerEvents="none"
-          />
+          {(() => {
+            const tipL = openLeaf(x1, y1, door.width * parentRatio)
+            const tipR = openLeaf(x2, y2, door.width * (1 - parentRatio))
+            return (
+              <>
+                <line
+                  x1={x1}
+                  y1={y1}
+                  x2={tipL.x}
+                  y2={tipL.y}
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+                <line
+                  x1={x2}
+                  y1={y2}
+                  x2={tipR.x}
+                  y2={tipR.y}
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+              </>
+            )
+          })()}
           {swingArc(x1, y1, door.width * parentRatio, rad, door.swing, stroke, !!selected)}
           {swingArc(
             x2,
@@ -194,55 +264,25 @@ export function DoorRenderer({
 
       {kind === 'sliding' && (
         <>
+          {/* 片引き戸: 実線＋破線の待避 */}
           {endTicks(x1, y1, nx, ny, stroke, detailStroke)}
-          {endTicks(x2, y2, nx, ny, stroke, detailStroke)}
           <line
-            x1={midX - cos * half * 0.28 * door.swing}
-            y1={midY - sin * half * 0.28 * door.swing}
-            x2={midX + cos * half * 0.4 * door.swing}
-            y2={midY + sin * half * 0.4 * door.swing}
+            x1={x1}
+            y1={y1}
+            x2={x1 + door.width * 0.72 * cos}
+            y2={y1 + door.width * 0.72 * sin}
             stroke={stroke}
-            strokeWidth={detailStroke}
-            markerEnd="none"
-            pointerEvents="none"
-          />
-          {/* 引き方向の矢印ヘッド */}
-          <line
-            x1={midX + cos * half * 0.4 * door.swing}
-            y1={midY + sin * half * 0.4 * door.swing}
-            x2={
-              midX +
-              cos * half * 0.4 * door.swing -
-              cos * 3 * door.swing -
-              nx * 2.5
-            }
-            y2={
-              midY +
-              sin * half * 0.4 * door.swing -
-              sin * 3 * door.swing -
-              ny * 2.5
-            }
-            stroke={stroke}
-            strokeWidth={detailStroke}
+            strokeWidth={leafStroke}
             pointerEvents="none"
           />
           <line
-            x1={midX + cos * half * 0.4 * door.swing}
-            y1={midY + sin * half * 0.4 * door.swing}
-            x2={
-              midX +
-              cos * half * 0.4 * door.swing -
-              cos * 3 * door.swing +
-              nx * 2.5
-            }
-            y2={
-              midY +
-              sin * half * 0.4 * door.swing -
-              sin * 3 * door.swing +
-              ny * 2.5
-            }
+            x1={x1 + door.width * 0.55 * cos + nx * door.width * 0.04}
+            y1={y1 + door.width * 0.55 * sin + ny * door.width * 0.04}
+            x2={x2 + nx * door.width * 0.04}
+            y2={y2 + ny * door.width * 0.04}
             stroke={stroke}
             strokeWidth={detailStroke}
+            strokeDasharray="4 3"
             pointerEvents="none"
           />
         </>
@@ -250,79 +290,162 @@ export function DoorRenderer({
 
       {kind === 'double_sliding' && (
         <>
-          {endTicks(x1, y1, nx, ny, stroke, detailStroke)}
-          {endTicks(x2, y2, nx, ny, stroke, detailStroke)}
-          {endTicks(midX, midY, nx, ny, stroke, detailStroke, 0.85)}
+          {/* 引き違い戸: 2枚が中央で重なり＋縦線 */}
           <line
-            x1={x1 + half * 0.2 * cos}
-            y1={y1 + half * 0.2 * sin}
-            x2={x1 + half * 0.55 * cos}
-            y2={y1 + half * 0.55 * sin}
+            x1={x1 + door.width * 0.06 * cos}
+            y1={y1 + door.width * 0.06 * sin}
+            x2={x1 + door.width * 0.58 * cos}
+            y2={y1 + door.width * 0.58 * sin}
             stroke={stroke}
-            strokeWidth={detailStroke}
+            strokeWidth={leafStroke}
             pointerEvents="none"
           />
           <line
-            x1={x2 - half * 0.2 * cos}
-            y1={y2 - half * 0.2 * sin}
-            x2={x2 - half * 0.55 * cos}
-            y2={y2 - half * 0.55 * sin}
+            x1={x1 + door.width * 0.42 * cos}
+            y1={y1 + door.width * 0.42 * sin}
+            x2={x1 + door.width * 0.94 * cos}
+            y2={y1 + door.width * 0.94 * sin}
             stroke={stroke}
-            strokeWidth={detailStroke}
+            strokeWidth={leafStroke}
             pointerEvents="none"
           />
+          {endTicks(midX, midY, nx, ny, stroke, detailStroke, 0.9)}
         </>
       )}
 
       {kind === 'pocket' && (
         <>
+          {/* 引き込み戸: 実線＋ポケット枠（破線） */}
           {endTicks(x1, y1, nx, ny, stroke, detailStroke)}
-          {/* 壁側ポケットを破線で表現 */}
           <line
-            x1={x2}
-            y1={y2}
-            x2={x2 + cos * half * 0.55 * door.swing}
-            y2={y2 + sin * half * 0.55 * door.swing}
+            x1={x1}
+            y1={y1}
+            x2={x1 + door.width * 0.7 * cos}
+            y2={y1 + door.width * 0.7 * sin}
             stroke={stroke}
-            strokeWidth={detailStroke}
-            strokeDasharray="4 3"
+            strokeWidth={leafStroke}
             pointerEvents="none"
           />
-          {endTicks(
-            x2 + cos * half * 0.55 * door.swing,
-            y2 + sin * half * 0.55 * door.swing,
-            nx,
-            ny,
-            stroke,
-            detailStroke,
-            0.75
-          )}
+          {(() => {
+            const pocketLen = door.width * 0.32
+            const pocketW = Math.min(door.width * 0.12, 6)
+            const ox = x2 - cos * pocketLen
+            const oy = y2 - sin * pocketLen
+            const pts = [
+              `${ox + nx * pocketW},${oy + ny * pocketW}`,
+              `${x2 + nx * pocketW},${y2 + ny * pocketW}`,
+              `${x2 - nx * pocketW},${y2 - ny * pocketW}`,
+              `${ox - nx * pocketW},${oy - ny * pocketW}`,
+            ].join(' ')
+            return (
+              <>
+                <polygon
+                  points={pts}
+                  fill="#FFFFFF"
+                  stroke={stroke}
+                  strokeWidth={detailStroke}
+                  pointerEvents="none"
+                />
+                <line
+                  x1={ox + cos * pocketLen * 0.15}
+                  y1={oy + sin * pocketLen * 0.15}
+                  x2={ox + cos * pocketLen * 0.85}
+                  y2={oy + sin * pocketLen * 0.85}
+                  stroke={stroke}
+                  strokeWidth={detailStroke}
+                  strokeDasharray="3.5 2.5"
+                  pointerEvents="none"
+                />
+              </>
+            )
+          })()}
         </>
       )}
 
       {kind === 'folding' && (
         <>
-          {endTicks(midX, midY, nx, ny, stroke, detailStroke, 0.8)}
-          {swingArc(x1, y1, half, rad, door.swing, stroke, !!selected)}
-          {swingArc(midX, midY, half * 0.85, rad, door.swing, stroke, !!selected)}
+          {/* 折れ戸: 2つの山形（V）が中央で接続（開口を横切る線は無し） */}
+          {(() => {
+            const peak = Math.min(door.width * 0.36, 14)
+            const q1x = x1 + half * 0.5 * cos
+            const q1y = y1 + half * 0.5 * sin
+            const q2x = x1 + half * 1.5 * cos
+            const q2y = y1 + half * 1.5 * sin
+            const p1x = q1x + nx * peak * swingDir
+            const p1y = q1y + ny * peak * swingDir
+            const p2x = q2x + nx * peak * swingDir
+            const p2y = q2y + ny * peak * swingDir
+            return (
+              <>
+                <polyline
+                  points={`${x1},${y1} ${p1x},${p1y} ${midX},${midY}`}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  strokeLinejoin="miter"
+                  pointerEvents="none"
+                />
+                <polyline
+                  points={`${x2},${y2} ${p2x},${p2y} ${midX},${midY}`}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  strokeLinejoin="miter"
+                  pointerEvents="none"
+                />
+                {endTicks(midX, midY, nx, ny, stroke, detailStroke, 1.0)}
+              </>
+            )
+          })()}
         </>
       )}
 
       {kind === 'double_folding' && (
         <>
-          {endTicks(midX, midY, nx, ny, stroke, detailStroke, 0.8)}
-          {swingArc(x1, y1, half * 0.5, rad, door.swing, stroke, !!selected)}
-          {swingArc(x1 + half * 0.5 * cos, y1 + half * 0.5 * sin, half * 0.5, rad, door.swing, stroke, !!selected)}
-          {swingArc(x2, y2, half * 0.5, rad + Math.PI, door.swing, stroke, !!selected)}
-          {swingArc(
-            x2 - half * 0.5 * cos,
-            y2 - half * 0.5 * sin,
-            half * 0.5,
-            rad + Math.PI,
-            door.swing,
-            stroke,
-            !!selected
-          )}
+          {(() => {
+            const peak = Math.min(door.width * 0.22, 10)
+            const q1x = x1 + half * 0.25 * cos
+            const q1y = y1 + half * 0.25 * sin
+            const q2x = x1 + half * 0.75 * cos
+            const q2y = y1 + half * 0.75 * sin
+            const q3x = x1 + half * 1.25 * cos
+            const q3y = y1 + half * 1.25 * sin
+            const q4x = x1 + half * 1.75 * cos
+            const q4y = y1 + half * 1.75 * sin
+            return (
+              <>
+                <polyline
+                  points={`${x1},${y1} ${q1x + nx * peak * swingDir},${q1y + ny * peak * swingDir} ${midX - half * 0.5 * cos},${midY - half * 0.5 * sin}`}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+                <polyline
+                  points={`${midX - half * 0.5 * cos},${midY - half * 0.5 * sin} ${q2x + nx * peak * swingDir},${q2y + ny * peak * swingDir} ${midX},${midY}`}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+                <polyline
+                  points={`${midX},${midY} ${q3x + nx * peak * swingDir},${q3y + ny * peak * swingDir} ${midX + half * 0.5 * cos},${midY + half * 0.5 * sin}`}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+                <polyline
+                  points={`${midX + half * 0.5 * cos},${midY + half * 0.5 * sin} ${q4x + nx * peak * swingDir},${q4y + ny * peak * swingDir} ${x2},${y2}`}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={leafStroke}
+                  pointerEvents="none"
+                />
+                {endTicks(midX, midY, nx, ny, stroke, detailStroke, 0.85)}
+              </>
+            )
+          })()}
         </>
       )}
 

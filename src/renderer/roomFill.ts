@@ -21,20 +21,15 @@ export function resolveRoomFillColor(room: Room): string {
 
 export function resolveRoomFillPattern(room: Room): RoomFillPattern {
   if (room.fillPattern !== undefined) return room.fillPattern
-  if (room.type === 'ld') return 'wood'
-  if (room.type === 'hallway' || room.type === 'storage' || room.type === 'void') return 'none'
-  if (room.type === 'japanese') return 'tatami'
-  if (room.type === 'attic') return 'hatch'
-  if (room.type === 'porch' || room.type === 'entrance') return 'none'
-  return 'none'
+  return getDefaultFillPattern(room.type)
 }
 
 export function getDefaultFillPattern(type: Room['type']): RoomFillPattern {
-  if (type === 'ld') return 'wood'
-  if (type === 'hallway' || type === 'storage' || type === 'void') return 'none'
+  if (type === 'ld' || type === 'western' || type === 'kitchen') return 'wood'
+  if (type === 'hallway' || type === 'storage' || type === 'void' || type === 'stairs') return 'none'
   if (type === 'japanese') return 'tatami'
   if (type === 'attic') return 'hatch'
-  if (type === 'porch' || type === 'entrance') return 'none'
+  if (type === 'porch' || type === 'entrance') return 'tile'
   return 'none'
 }
 

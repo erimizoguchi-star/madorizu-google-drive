@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import type { Point, Window } from '../types/floorPlan'
 import { SELECTION } from './styles'
-import { attachSvgPointerDrag, canvasToFloor } from './svgCoords'
+import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
 
 const HANDLE_R = 6
 
@@ -33,13 +33,9 @@ export function WindowEditHandles({
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
 
-    const pt = svg.createSVGPoint()
-    pt.x = e.clientX
-    pt.y = e.clientY
-    const ctm = svg.getScreenCTM()
-    if (!ctm) return
-    const local = pt.matrixTransform(ctm.inverse())
-    const pointerFloor = canvasToFloor({ x: local.x, y: local.y }, floorOffset)
+    const local = clientToSvg(svg, e.clientX, e.clientY)
+    if (!local) return
+    const pointerFloor = canvasToFloor(local, floorOffset)
     originRef.current = {
       pointerFloor,
       window: {

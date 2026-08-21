@@ -21,13 +21,14 @@ import {
   isTypingInEditableField,
   resizeRoomEdge,
   setRoomPolygon,
+  setStairPolygon,
   updateLabelOffset,
-  updateStair,
 } from './utils/floorPlanEdit'
 import {
   addDoorAt,
   addFixtureAt,
   addRoomAt,
+  addTextAt,
   addWallSegment,
   addWindowAt,
   fixtureTypeFromPlaceKind,
@@ -37,6 +38,7 @@ import {
 import {
   moveDoor,
   moveFixture,
+  moveTextLabel,
   moveWallEndpoint,
   moveWindowEndpoint,
   resizeFixtureCorner,
@@ -70,6 +72,11 @@ function App() {
   const [wideEdit, setWideEdit] = useState(false)
   const [panelHidden, setPanelHidden] = useState(false)
   const [wallDraftStart, setWallDraftStart] = useState<Point | null>(null)
+  /** 扉・窓・開口の連続配置で優先する壁 */
+  const [placeWallTarget, setPlaceWallTarget] = useState<{
+    floorId: string
+    wallId: string
+  } | null>(null)
 
   const handleResult = (result: AnalysisResult) => {
     resetFloorPlan(result.floorPlan)
@@ -79,6 +86,7 @@ function App() {
     setMergeRoomIds(null)
     setPlaceKind(null)
     setWallDraftStart(null)
+    setPlaceWallTarget(null)
     if (result.sourcePreviewUrl && result.sourceFileName) {
       setSourcePreview({ url: result.sourcePreviewUrl, fileName: result.sourceFileName })
     }
@@ -95,6 +103,7 @@ function App() {
     setEditMode(true)
     setPlaceKind(null)
     setWallDraftStart(null)
+    setPlaceWallTarget(null)
 
     if (ref.kind === 'room') {
       const { floorId, roomId } = ref
@@ -141,20 +150,33 @@ function App() {
       return
     }
 
+    const preferredWallId =
+      placeWallTarget?.floorId === floorId
+        ? placeWallTarget.wallId
+        : selected?.kind === 'wall' && selected.floorId === floorId
+          ? selected.wallId
+          : undefined
+
     let result:
       | { floorPlan: FloorPlan; roomId: string }
       | { floorPlan: FloorPlan; doorId: string }
       | { floorPlan: FloorPlan; windowId: string }
       | { floorPlan: FloorPlan; fixtureId: string }
+      | { floorPlan: FloorPlan; textId: string }
       | { error: string }
 
     if (placeKind === 'room') result = addRoomAt(floorPlan, floorId, position)
-    else if (placeKind === 'door') result = addDoorAt(floorPlan, floorId, position)
-    else if (placeKind === 'opening') {
-      result = addDoorAt(floorPlan, floorId, position, { kind: 'opening' })
+    else if (placeKind === 'door') {
+      result = addDoorAt(floorPlan, floorId, position, { preferredWallId })
+    } else if (placeKind === 'opening') {
+      result = addDoorAt(floorPlan, floorId, position, { kind: 'opening', preferredWallId })
+    } else if (placeKind === 'text') {
+      result = addTextAt(floorPlan, floorId, position)
     } else if (isFixturePlaceKind(placeKind)) {
       result = addFixtureAt(floorPlan, floorId, position, fixtureTypeFromPlaceKind(placeKind))
-    } else result = addWindowAt(floorPlan, floorId, position)
+    } else {
+      result = addWindowAt(floorPlan, floorId, position, { preferredWallId })
+    }
 
     if ('error' in result) {
       setError(result.error)
@@ -163,6 +185,7 @@ function App() {
 
     commit(result.floorPlan)
     setWallDraftStart(null)
+    setError(null)
     if ('roomId' in result) {
       setPlaceKind(null)
       setSelected({ kind: 'room', floorId, roomId: result.roomId })
@@ -172,6 +195,9 @@ function App() {
       setMergeRoomIds(null)
     } else if ('fixtureId' in result) {
       setSelected({ kind: 'fixture', floorId, fixtureId: result.fixtureId })
+      setMergeRoomIds(null)
+    } else if ('textId' in result) {
+      setSelected({ kind: 'text', floorId, textId: result.textId })
       setMergeRoomIds(null)
     } else {
       setSelected({ kind: 'window', floorId, windowId: result.windowId })
@@ -188,6 +214,7 @@ function App() {
       if (e.key === 'Escape') {
         setPlaceKind(null)
         setWallDraftStart(null)
+        setPlaceWallTarget(null)
         return
       }
 
@@ -230,6 +257,7 @@ function App() {
       if (e.key !== 'Escape') return
       setPlaceKind(null)
       setWallDraftStart(null)
+      setPlaceWallTarget(null)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -315,11 +343,25 @@ function App() {
                   onPlaceKindChange={(kind) => {
                     setPlaceKind(kind)
                     setWallDraftStart(null)
-                    if (kind) setSelected(null)
+                    if (kind === 'door' || kind === 'window' || kind === 'opening') {
+                      if (selected?.kind === 'wall') {
+                        setPlaceWallTarget({
+                          floorId: selected.floorId,
+                          wallId: selected.wallId,
+                        })
+                      } else {
+                        setPlaceWallTarget(null)
+                        setSelected(null)
+                      }
+                    } else {
+                      setPlaceWallTarget(null)
+                      if (kind) setSelected(null)
+                    }
                   }}
                   onSelect={handleSelect}
                   onMergeRoomIdsChange={setMergeRoomIds}
                   onChange={(updater) => commit(updater)}
+                  onError={setError}
                 />
               )}
             </>
@@ -368,6 +410,7 @@ function App() {
                   setMergeRoomIds(null)
                   setPlaceKind(null)
                   setWallDraftStart(null)
+                  setPlaceWallTarget(null)
                 }}
               />
             </>
@@ -508,8 +551,11 @@ function App() {
                 onFixtureMove={(ref, position) => {
                   commit((plan) => moveFixture(plan, ref, position), { coalesce: true })
                 }}
-                onStairMove={(ref, delta) => {
-                  commit((plan) => updateStair(plan, ref, { moveBy: delta }), { coalesce: true })
+                onStairMove={(ref, polygon) => {
+                  commit((plan) => setStairPolygon(plan, ref, polygon), { coalesce: true })
+                }}
+                onTextMove={(ref, position) => {
+                  commit((plan) => moveTextLabel(plan, ref, position), { coalesce: true })
                 }}
                 onFixtureResize={(ref, corner, position) => {
                   commit((plan) => resizeFixtureCorner(plan, ref, corner, position), {

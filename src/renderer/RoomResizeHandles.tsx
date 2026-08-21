@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { RectEdge, AxisAlignedRect } from '../utils/roomGeometry'
 import { SELECTION } from './styles'
+import { clientToSvg } from './svgCoords'
 
 const HANDLE_LENGTH = 28
 const HANDLE_THICKNESS = 8
@@ -10,16 +11,6 @@ interface RoomResizeHandlesProps {
   /** キャンバス座標 → フロア座標へのオフセット */
   floorOffset: { x: number; y: number }
   onResize: (edge: RectEdge, positionFloorSvg: number) => void
-}
-
-function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number) {
-  const pt = svg.createSVGPoint()
-  pt.x = clientX
-  pt.y = clientY
-  const ctm = svg.getScreenCTM()
-  if (!ctm) return null
-  const local = pt.matrixTransform(ctm.inverse())
-  return { x: local.x, y: local.y }
 }
 
 export function RoomResizeHandles({ rect, floorOffset, onResize }: RoomResizeHandlesProps) {

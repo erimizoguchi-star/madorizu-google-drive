@@ -1,13 +1,25 @@
 import type { Point } from '../types/floorPlan'
 
+/**
+ * 画面上のクリックを SVG ユーザー座標へ変換する。
+ * ZoomableView の CSS transform（拡大・パン）下では getScreenCTM() が祖先の
+ * transform を拾わないことがあるため、getBoundingClientRect + viewBox で換算する。
+ */
 export function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): Point | null {
-  const pt = svg.createSVGPoint()
-  pt.x = clientX
-  pt.y = clientY
-  const ctm = svg.getScreenCTM()
-  if (!ctm) return null
-  const local = pt.matrixTransform(ctm.inverse())
-  return { x: local.x, y: local.y }
+  const rect = svg.getBoundingClientRect()
+  if (rect.width < 1e-6 || rect.height < 1e-6) return null
+
+  const vb = svg.viewBox.baseVal
+  const vbX = vb.width > 0 ? vb.x : 0
+  const vbY = vb.height > 0 ? vb.y : 0
+  const vbW = vb.width > 0 ? vb.width : svg.clientWidth || rect.width
+  const vbH = vb.height > 0 ? vb.height : svg.clientHeight || rect.height
+  if (vbW < 1e-6 || vbH < 1e-6) return null
+
+  return {
+    x: vbX + ((clientX - rect.left) / rect.width) * vbW,
+    y: vbY + ((clientY - rect.top) / rect.height) * vbH,
+  }
 }
 
 export function canvasToFloor(canvas: Point, floorOffset: Point): Point {

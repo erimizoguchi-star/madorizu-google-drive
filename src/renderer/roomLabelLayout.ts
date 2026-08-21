@@ -1,5 +1,5 @@
 import type { Point, Room, RoomType, Stair } from '../types/floorPlan'
-import { isAreaJoHiddenByType } from '../constants/roomTypes'
+import { isAreaJoHiddenByType, toJapaneseRoomName } from '../constants/roomTypes'
 import { LABEL, mm2ToJo, polygonArea } from './styles'
 
 const SVG_MM = 10
@@ -87,7 +87,7 @@ function layoutLineYs(centerY: number, entries: { fontSize: number }[]): number[
 export function roomToLabelSource(room: Room): LabelSource {
   return {
     polygon: room.polygon,
-    name: room.name,
+    name: toJapaneseRoomName(room.name, room.type),
     type: room.type,
     areaJo: room.areaJo,
     note: room.note,
@@ -102,10 +102,18 @@ export function roomToLabelSource(room: Room): LabelSource {
   }
 }
 
+export function stairDirectionLabel(stair: Pick<Stair, 'direction' | 'name'>): 'UP' | 'DOWN' {
+  // 明示的に DOWN のときだけ DOWN。それ以外（up / 省略）は UP
+  if (stair.direction === 'down') return 'DOWN'
+  // 旧データで name だけ "DOWN" になっている場合の互換
+  if (stair.name && /^down$/i.test(stair.name.trim())) return 'DOWN'
+  return 'UP'
+}
+
 export function stairToLabelSource(stair: Stair): LabelSource {
   return {
     polygon: stair.polygon,
-    name: stair.name ?? '階段',
+    name: stairDirectionLabel(stair),
     type: 'stairs',
     showName: stair.showName,
     showAreaJo: false,

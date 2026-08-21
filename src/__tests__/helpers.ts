@@ -29,6 +29,7 @@ export function makeFloor(extra: Partial<Floor> = {}): Floor {
     windows: [],
     fixtures: [],
     stairs: [],
+    texts: [],
     ...extra,
   }
 }
