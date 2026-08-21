@@ -4,6 +4,7 @@ import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
 import { CANVAS } from './styles'
 import { DoorRenderer } from './DoorRenderer'
+import { doorPaintExtentPoints } from './doorPaintBounds'
 import { FixtureRenderer } from './FixtureRenderer'
 import { NorthArrow } from './NorthArrow'
 import { RoomLabels } from './RoomLabels'
@@ -13,6 +14,7 @@ import { RoomResizeHandles } from './RoomResizeHandles'
 import { StairRenderer } from './StairRenderer'
 import { WallRenderer } from './WallRenderer'
 import { WindowRenderer } from './WindowRenderer'
+import { TextLabelRenderer } from './TextLabelRenderer'
 import { WallEditHandles } from './WallEditHandles'
 import { WindowEditHandles } from './WindowEditHandles'
 import { FixtureEditHandles } from './FixtureEditHandles'
@@ -31,13 +33,15 @@ interface FloorCanvasProps {
   selectedDoorId?: string | null
   selectedWindowId?: string | null
   selectedFixtureId?: string | null
+  selectedTextId?: string | null
   onRoomSelect?: (roomId: string, additive?: boolean) => void
   onStairSelect?: (stairId: string) => void
-  onStairMove?: (stairId: string, delta: Point) => void
+  onStairMove?: (stairId: string, polygonFloor: Point[]) => void
   onWallSelect?: (wallId: string) => void
   onDoorSelect?: (doorId: string) => void
   onWindowSelect?: (windowId: string) => void
   onFixtureSelect?: (fixtureId: string) => void
+  onTextSelect?: (textId: string) => void
   onRoomLabelOffsetChange?: (roomId: string, kind: LabelLineKind, offset: Point) => void
   onStairLabelOffsetChange?: (stairId: string, kind: LabelLineKind, offset: Point) => void
   onRoomResize?: (roomId: string, edge: RectEdge, positionFloorSvg: number) => void
@@ -49,6 +53,7 @@ interface FloorCanvasProps {
   onWindowMove?: (windowId: string, start: Point, end: Point) => void
   onFixtureMove?: (fixtureId: string, position: Point) => void
   onFixtureResize?: (fixtureId: string, corner: FixtureCorner, position: Point) => void
+  onTextMove?: (textId: string, position: Point) => void
   /** 追加配置モード時のクリック（floor 座標） */
   placeMode?: boolean
   /** 壁追加モードで1点目をクリックした位置（floor 座標） */
@@ -60,13 +65,15 @@ function getBounds(floor: Floor) {
   const allPoints = [
     ...floor.rooms.flatMap((r) => r.polygon ?? []),
     ...floor.walls.flatMap((w) => [w.start, w.end]),
-    ...floor.doors.map((d) => d.position),
+    // 開き弧・戸先など壁外にはみ出す記号も含める（位置点だけだと viewBox で切れる）
+    ...floor.doors.flatMap((d) => doorPaintExtentPoints(d)),
     ...floor.windows.flatMap((w) => [w.start, w.end]),
     ...floor.fixtures.flatMap((f) => [
       f.position,
       { x: f.position.x + f.width, y: f.position.y + f.height },
     ]),
     ...floor.stairs.flatMap((s) => s.polygon ?? []),
+    ...(floor.texts ?? []).map((t) => t.position),
   ].filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
 
   if (allPoints.length === 0) {
@@ -101,6 +108,7 @@ export function FloorCanvas({
   selectedDoorId,
   selectedWindowId,
   selectedFixtureId,
+  selectedTextId,
   onRoomSelect,
   onStairSelect,
   onStairMove,
@@ -108,6 +116,7 @@ export function FloorCanvas({
   onDoorSelect,
   onWindowSelect,
   onFixtureSelect,
+  onTextSelect,
   onRoomLabelOffsetChange,
   onStairLabelOffsetChange,
   onRoomResize,
@@ -119,6 +128,7 @@ export function FloorCanvas({
   onWindowMove,
   onFixtureMove,
   onFixtureResize,
+  onTextMove,
   placeMode,
   wallDraftStart,
   onPlaceClick,
@@ -183,6 +193,10 @@ export function FloorCanvas({
       ...s,
       polygon: s.polygon.map((p) => transform(p.x, p.y)),
     })),
+    texts: (floor.texts ?? []).map((t) => ({
+      ...t,
+      position: transform(t.position.x, t.position.y),
+    })),
   }
 
   const floorOffset = { x: offsetX, y: offsetY }
@@ -241,7 +255,7 @@ export function FloorCanvas({
               selected={selectedStairId === stair.id}
               floorOffset={floorOffset}
               onSelect={onStairSelect}
-              onMove={onStairMove ? (delta) => onStairMove(stair.id, delta) : undefined}
+              onMove={onStairMove ? (id, polygon) => onStairMove(id, polygon) : undefined}
             />
           ))}
         </g>
@@ -356,6 +370,17 @@ export function FloorCanvas({
               />
             )
           })}
+          {(transformedFloor.texts ?? []).map((textLabel) => (
+            <TextLabelRenderer
+              key={textLabel.id}
+              label={textLabel}
+              selected={selectedTextId === textLabel.id}
+              editable={editable}
+              floorOffset={floorOffset}
+              onSelect={onTextSelect}
+              onMove={onTextMove ? (pos) => onTextMove(textLabel.id, pos) : undefined}
+            />
+          ))}
         </g>
         {selectedRoomRectCanvas && onRoomResize && selectedRoomId && (
           <g className="resize-handles-layer">

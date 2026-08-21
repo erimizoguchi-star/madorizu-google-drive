@@ -156,20 +156,33 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
           </div>
 
           <div className="editor-field">
-            <label htmlFor="stair-name">表示名</label>
-            <input
-              id="stair-name"
-              type="text"
-              value={currentStair.stair.name ?? '階段'}
-              onChange={(e) => handleStairField({ name: e.target.value })}
-            />
+            <span className="editor-offset-label">表示文字（UP / DOWN）</span>
+            <div className="editor-swing-grid">
+              <button
+                type="button"
+                className={`btn editor-swing-btn ${currentStair.stair.direction !== 'down' ? 'active' : ''}`}
+                onClick={() => handleStairField({ direction: 'up', name: 'UP' })}
+              >
+                UP
+              </button>
+              <button
+                type="button"
+                className={`btn editor-swing-btn ${currentStair.stair.direction === 'down' ? 'active' : ''}`}
+                onClick={() => handleStairField({ direction: 'down', name: 'DOWN' })}
+              >
+                DOWN
+              </button>
+            </div>
+            <p className="editor-field-hint">
+              間取図上の表記です。1階は通常 UP、2階は通常 DOWN にします。
+            </p>
             <label className="editor-checkbox">
               <input
                 type="checkbox"
                 checked={currentStair.stair.showName !== false}
                 onChange={(e) => handleStairField({ showName: e.target.checked })}
               />
-              名称を表示
+              UP / DOWN を表示
             </label>
           </div>
 
@@ -206,7 +219,7 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
             <span className="editor-offset-heading">表示位置の調整</span>
             <p className="editor-offset-hint">数値入力または間取図上でラベルをドラッグ</p>
             <OffsetFields
-              label="名称"
+              label="UP/DOWN"
               offset={currentStair.stair.nameLabelOffset}
               onChange={handleStairOffset}
               onReset={() => handleStairOffset({ x: 0, y: 0 })}

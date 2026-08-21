@@ -19,7 +19,8 @@ interface StairRendererProps {
   renderLabels?: boolean
   floorOffset?: Point
   onSelect?: (stairId: string) => void
-  onMove?: (delta: Point) => void
+  /** 平行移動後のポリゴン（floor 座標）— 部屋と同じ */
+  onMove?: (stairId: string, polygonFloor: Point[]) => void
   onLabelOffsetChange?: (kind: LabelLineKind, offset: Point) => void
 }
 
@@ -29,7 +30,7 @@ export function StairRenderer({
   selectable,
   editable,
   renderLabels = true,
-  floorOffset,
+  floorOffset = { x: 0, y: 0 },
   onSelect,
   onMove,
   onLabelOffsetChange,
@@ -39,28 +40,48 @@ export function StairRenderer({
   const { stepLines, arrowPath } = computeStairGraphics(stair)
   const label = computeStairLabelLayout(stair)
   const canSelect = selectable && onSelect
-  const canDrag = editable && !!onMove && !!floorOffset
-  const originRef = useRef<Point | null>(null)
+  const canDrag = editable && !!onMove
+  const originRef = useRef<{
+    pointerFloor: Point
+    polygonFloor: Point[]
+  } | null>(null)
   const tip = arrowPath?.points[arrowPath.points.length - 1]
   const startR = 2.2
 
+  const toFloorPolygon = (canvasPolygon: Point[]) =>
+    canvasPolygon.map((p) => ({
+      x: p.x - floorOffset.x,
+      y: p.y - floorOffset.y,
+    }))
+
   const startDrag = (e: React.PointerEvent<SVGElement>) => {
-    if (!canDrag || !onMove || !floorOffset) return
+    if (!canDrag || !onMove) return
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
-    const from = clientToSvg(svg, e.clientX, e.clientY)
-    if (!from) return
-    originRef.current = canvasToFloor(from, floorOffset)
+    const canvasPos = clientToSvg(svg, e.clientX, e.clientY)
+    if (!canvasPos) return
+
+    originRef.current = {
+      pointerFloor: canvasToFloor(canvasPos, floorOffset),
+      polygonFloor: toFloorPolygon(stair.polygon),
+    }
 
     attachSvgPointerDrag(
       e,
       svg,
-      (canvasPos) => {
+      (pos) => {
         const origin = originRef.current
         if (!origin) return
-        const now = canvasToFloor(canvasPos, floorOffset)
-        onMove({ x: now.x - origin.x, y: now.y - origin.y })
-        originRef.current = now
+        const currentFloor = canvasToFloor(pos, floorOffset)
+        const dx = currentFloor.x - origin.pointerFloor.x
+        const dy = currentFloor.y - origin.pointerFloor.y
+        onMove(
+          stair.id,
+          origin.polygonFloor.map((p) => ({
+            x: p.x + dx,
+            y: p.y + dy,
+          }))
+        )
       },
       () => {
         originRef.current = null
@@ -72,6 +93,7 @@ export function StairRenderer({
     <g
       className={`stair ${selected ? 'stair-selected' : ''} ${canSelect ? 'stair-selectable' : ''}`}
       data-stair-id={stair.id}
+      data-no-pan={canDrag ? '' : undefined}
       onClick={
         canSelect
           ? (e) => {
@@ -88,7 +110,12 @@ export function StairRenderer({
           <path d={path} />
         </clipPath>
       </defs>
-      <path d={path} fill={STAIR.fill} stroke="none" pointerEvents={canSelect ? 'all' : undefined} />
+      <path
+        d={path}
+        fill={STAIR.fill}
+        stroke="none"
+        pointerEvents={canSelect || canDrag ? 'all' : undefined}
+      />
       <g className="stair-steps" clipPath={`url(#${clipId})`}>
         {stepLines.map((line, i) => (
           <line
@@ -120,10 +147,7 @@ export function StairRenderer({
             strokeLinejoin="round"
             strokeLinecap="round"
           />
-          <polygon
-            points={arrowHeadPoints(tip, arrowPath.tipAngleDeg)}
-            fill={STAIR.line}
-          />
+          <polygon points={arrowHeadPoints(tip, arrowPath.tipAngleDeg)} fill={STAIR.line} />
         </g>
       )}
       {renderLabels && label && (

@@ -1,99 +1,99 @@
 import type { RoomType } from '../types/floorPlan'
 
 /**
- * 参考間取図に近いパステル配色
- * 廊下・玄関・収納・バルコニーは白基調
+ * 参考間取図（おしゃれパステル）寄り配色
+ * LD・洋室は薄いベージュ、和室はミント、水回りはスカイブルー、通路・収納は白
  */
 export const ROOM_COLORS: Record<RoomType, { fill: string; stroke?: string }> = {
-  ld: { fill: '#FFF4C8' },
-  kitchen: { fill: '#FFF0B8' },
-  bathroom: { fill: '#D4E8F7' },
-  toilet: { fill: '#D4E8F7' },
-  washroom: { fill: '#D4E8F7' },
-  japanese: { fill: '#C8E8C0' },
-  western: { fill: '#F8D4E0' },
+  ld: { fill: '#F3EEE4' },
+  kitchen: { fill: '#F3EEE4' },
+  bathroom: { fill: '#D9ECF6' },
+  toilet: { fill: '#D9ECF6' },
+  washroom: { fill: '#D9ECF6' },
+  japanese: { fill: '#D5EBDA' },
+  western: { fill: '#F3EEE4' },
   hallway: { fill: '#FFFFFF' },
-  entrance: { fill: '#FFFFFF' },
-  stairs: { fill: '#F5EDE3' },
-  storage: { fill: '#F3EEE6' },
-  porch: { fill: '#FFFFFF' },
-  attic: { fill: '#EFEAE3' },
+  entrance: { fill: '#FAFAF8' },
+  stairs: { fill: '#FFFFFF' },
+  storage: { fill: '#FFFFFF' },
+  porch: { fill: '#FAFAF8' },
+  attic: { fill: '#F0EBE4' },
   void: { fill: '#FFFFFF' },
-  other: { fill: '#F5F0E8' },
+  other: { fill: '#F7F4EF' },
 }
 
 export const CANVAS = {
   background: '#FFFFFF',
   border: '#E8E4DC',
-  shadow: 'rgba(40, 40, 40, 0.06)',
+  shadow: 'rgba(40, 40, 40, 0.05)',
 }
 
-/** 参考図の太い壁帯 */
+/** 参考図の太いチャコールグレー壁帯 */
 export const WALL = {
-  exteriorWidth: 7.5,
-  interiorWidth: 4.8,
+  exteriorWidth: 8.2,
+  interiorWidth: 5.2,
   color: '#4A4A4A',
-  exteriorColor: '#3D3D3D',
+  exteriorColor: '#2F2F2F',
 }
 
-/** 製図調の扉（細め・高コントラスト） */
+/** 参考図の細めグレー建具 */
 export const DOOR = {
-  color: '#111111',
-  leafWidth: 1.8,
-  leafWidthSelected: 2.6,
-  detailWidth: 1.5,
-  arcWidth: 1.35,
-  arcWidthSelected: 1.9,
-  arcOpacity: 0.75,
-  endTick: 3.2,
+  color: '#5A5A5A',
+  leafWidth: 1.35,
+  leafWidthSelected: 2.2,
+  detailWidth: 1.15,
+  arcWidth: 1.05,
+  arcWidthSelected: 1.6,
+  arcOpacity: 0.7,
+  endTick: 2.8,
 }
 
-/** 壁開口内の二重線（濃いグレー） */
+/** 壁開口内の二重線（ソフトグレー） */
 export const WINDOW = {
-  color: '#1A1A1A',
-  gap: 2.2,
-  lineWidth: 1.6,
-  lineWidthSelected: 2.3,
-  detailWidth: 1.4,
-  endTick: 3.5,
+  color: '#5A5A5A',
+  gap: 2.0,
+  lineWidth: 1.25,
+  lineWidthSelected: 2.0,
+  detailWidth: 1.1,
+  endTick: 3.0,
 }
 
+/** 参考図風のセリフ体（日本語は Noto Serif JP） */
 export const LABEL = {
-  fontFamily: '"Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif',
-  defaultFontSize: 22,
+  fontFamily: '"Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif',
+  defaultFontSize: 20,
   fontSizeMin: 6,
   fontSizeMax: 48,
-  areaSizeRatio: 0.78,
-  noteSizeRatio: 0.68,
-  color: '#111111',
-  noteColor: '#222222',
-  letterSpacing: '0.02em',
-  fontWeight: 600,
-  areaFontWeight: 500,
+  areaSizeRatio: 0.82,
+  noteSizeRatio: 0.7,
+  color: '#555555',
+  noteColor: '#666666',
+  letterSpacing: '0.04em',
+  fontWeight: 500,
+  areaFontWeight: 400,
+  fontStyle: 'italic' as const,
 }
 
 export const TATAMI = {
-  gridColor: '#7AAD74',
-  gridWidth: 0.5,
+  gridColor: '#8BB88A',
+  gridWidth: 0.55,
 }
 
+/** 薄いベージュ床＋細い縦ピンストライプ（参考図のフローリング） */
 export const WOOD_FLOORING = {
-  plankSpacing: 135,
-  grainSpacing: 16,
-  grainStepX: 34,
-  seamColor: '#D4B45A',
-  seamWidth: 0.85,
-  grainColor: '#C9A84A',
-  grainWidth: 0.5,
-  grainOpacity: 0.5,
-  seamOpacity: 0.65,
+  spacing: 5.2,
+  color: '#C5C0B6',
+  width: 0.42,
+  opacity: 0.5,
+  /** vertical = 上下方向の板目（参考図） */
+  direction: 'vertical' as 'vertical' | 'horizontal',
 }
 
 export const TILE = {
-  spacing: 75,
-  lineWidth: 0.75,
-  porch: { grout: '#D0D0D0', opacity: 0.85 },
-  entrance: { grout: '#C8C8C8', opacity: 0.7 },
+  spacing: 68,
+  lineWidth: 0.55,
+  porch: { grout: '#D5D5D5', opacity: 0.75 },
+  entrance: { grout: '#CECECE', opacity: 0.65 },
 }
 
 export const ATTIC_HATCH = {
@@ -102,15 +102,15 @@ export const ATTIC_HATCH = {
 }
 
 export const FIXTURE = {
-  stroke: '#2A2A2A',
+  stroke: '#5A5A5A',
   fill: '#FFFFFF',
-  strokeWidth: 1.35,
+  strokeWidth: 1.15,
 }
 
 export const STAIR = {
   fill: '#FFFFFF',
-  line: '#222222',
-  accent: '#222222',
+  line: '#5A5A5A',
+  accent: '#5A5A5A',
 }
 
 export const SELECTION = {
@@ -119,15 +119,15 @@ export const SELECTION = {
 }
 
 export const NORTH_ARROW = {
-  color: '#222222',
-  size: 28,
+  color: '#555555',
+  accent: '#7CB87C',
+  size: 32,
 }
 
 export const SCALE = 10
 
 export const LEGEND_ITEMS: { type: RoomType; label: string }[] = [
-  { type: 'ld', label: 'LD・DK' },
-  { type: 'western', label: '洋室' },
+  { type: 'ld', label: 'LD・洋室' },
   { type: 'japanese', label: '和室' },
   { type: 'bathroom', label: '水回り' },
   { type: 'hallway', label: '廊下・玄関' },

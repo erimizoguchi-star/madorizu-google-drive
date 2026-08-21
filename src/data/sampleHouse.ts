@@ -166,12 +166,12 @@ export const sampleHouse: FloorPlan = {
         { id: 'd7', position: { x: mmToSvg(1800), y: mmToSvg(1350) }, width: mmToSvg(600), angle: 90, swing: -1 },
       ],
       windows: [
-        { id: 'win1', start: { x: mmToSvg(600), y: mmToSvg(5100) }, end: { x: mmToSvg(1500), y: mmToSvg(5100) } },
-        { id: 'win2', start: { x: mmToSvg(3000), y: mmToSvg(5100) }, end: { x: mmToSvg(4800), y: mmToSvg(5100) } },
-        { id: 'win3', start: { x: mmToSvg(5400), y: mmToSvg(2400) }, end: { x: mmToSvg(5400), y: mmToSvg(3600) } },
-        { id: 'win4', start: { x: mmToSvg(4200), y: mmToSvg(0) }, end: { x: mmToSvg(5100), y: mmToSvg(0) } },
-        { id: 'win5', start: { x: mmToSvg(0), y: mmToSvg(1200) }, end: { x: mmToSvg(0), y: mmToSvg(2100) } },
-        { id: 'win6', start: { x: mmToSvg(3600), y: mmToSvg(1800) }, end: { x: mmToSvg(4800), y: mmToSvg(1800) } },
+        { id: 'win1', start: { x: mmToSvg(600), y: mmToSvg(5100) }, end: { x: mmToSvg(1500), y: mmToSvg(5100) }, kind: 'sliding' },
+        { id: 'win2', start: { x: mmToSvg(3000), y: mmToSvg(5100) }, end: { x: mmToSvg(4800), y: mmToSvg(5100) }, kind: 'single_sliding' },
+        { id: 'win3', start: { x: mmToSvg(5400), y: mmToSvg(2400) }, end: { x: mmToSvg(5400), y: mmToSvg(3600) }, kind: 'folding' },
+        { id: 'win4', start: { x: mmToSvg(4200), y: mmToSvg(0) }, end: { x: mmToSvg(5100), y: mmToSvg(0) }, kind: 'casement' },
+        { id: 'win5', start: { x: mmToSvg(0), y: mmToSvg(1200) }, end: { x: mmToSvg(0), y: mmToSvg(2100) }, kind: 'double_casement' },
+        { id: 'win6', start: { x: mmToSvg(3600), y: mmToSvg(1800) }, end: { x: mmToSvg(4800), y: mmToSvg(1800) }, kind: 'pocket' },
       ],
       fixtures: [
         { id: 'f1', type: 'bathtub', position: { x: mmToSvg(300), y: mmToSvg(1200) }, width: mmToSvg(700), height: mmToSvg(400) },
@@ -186,7 +186,7 @@ export const sampleHouse: FloorPlan = {
       stairs: [
         {
           id: 'st1',
-          name: '階段',
+          name: 'UP',
           direction: 'up',
           layout: 'turn-right',
           orientation: 'up',
@@ -346,7 +346,7 @@ export const sampleHouse: FloorPlan = {
       stairs: [
         {
           id: 'st2',
-          name: '階段',
+          name: 'DOWN',
           direction: 'down',
           polygon: [
             { x: mmToSvg(1800), y: mmToSvg(3300) },

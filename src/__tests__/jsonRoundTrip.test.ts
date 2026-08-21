@@ -71,7 +71,7 @@ describe('JSON往復: 編集内容の保持', () => {
           },
         ],
         windows: [
-          { id: 'w1', start: { x: 500, y: 0 }, end: { x: 600, y: 0 }, kind: 'awning', outward: 1 },
+          { id: 'w1', start: { x: 500, y: 0 }, end: { x: 600, y: 0 }, kind: 'casement', outward: 1 },
         ],
         fixtures: [
           { id: 'f1', type: 'bathtub', position: { x: 50, y: 50 }, width: 140, height: 70, angle: 90 },

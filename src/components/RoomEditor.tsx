@@ -20,6 +20,7 @@ import { DoorPanel } from './editor/DoorPanel'
 import { FixturePanel } from './editor/FixturePanel'
 import { RoomPanel } from './editor/RoomPanel'
 import { StairPanel } from './editor/StairPanel'
+import { TextPanel } from './editor/TextPanel'
 import { WallPanel } from './editor/WallPanel'
 import { WindowPanel } from './editor/WindowPanel'
 
@@ -32,6 +33,7 @@ interface RoomEditorProps {
   onSelect: (ref: SelectedElementRef | null, options?: SelectOptions) => void
   onMergeRoomIdsChange: (ids: { floorId: string; roomIds: string[] } | null) => void
   onChange: (updater: (prev: FloorPlan) => FloorPlan) => void
+  onError?: (message: string | null) => void
   canUndo?: boolean
   canRedo?: boolean
   onUndo?: () => void
@@ -51,6 +53,7 @@ export function RoomEditor({
   onSelect,
   onMergeRoomIdsChange,
   onChange,
+  onError,
   canUndo = false,
   canRedo = false,
   onUndo,
@@ -162,6 +165,7 @@ export function RoomEditor({
               ['window', '窓'],
               ['opening', '開口'],
               ['wall', '壁'],
+              ['text', '文字'],
             ] as const
           ).map(([kind, label]) => (
             <button
@@ -197,7 +201,11 @@ export function RoomEditor({
         {placeKind && (
           <p className="editor-field-hint">
             {placeKind === 'door' || placeKind === 'window' || placeKind === 'opening'
-              ? '壁・部屋の辺をクリックして追加（連続配置可）。もう一度ボタンか Esc で終了。'
+              ? selected?.kind === 'wall'
+                ? '選択中の壁上をクリックして追加（連続配置可）。もう一度ボタンか Esc で終了。'
+                : '壁をクリックして追加（連続配置可）。先に壁を選ぶとその壁に固定。もう一度ボタンか Esc で終了。'
+              : placeKind === 'text'
+                ? '間取図をクリックして文字を配置（連続配置可）。配置後に文言・サイズを編集できます。'
               : isFixturePlaceKind(placeKind)
                 ? '間取図をクリックして設備を配置（連続配置可）。もう一度ボタンか Esc で終了。'
                 : '配置モード中 — 間取図をクリックして追加（もう一度ボタンか Esc で解除）'}
@@ -270,7 +278,10 @@ export function RoomEditor({
 
       {selected?.kind === 'room' && <RoomPanel {...panelProps} selected={selected} />}
       {selected?.kind === 'stair' && <StairPanel {...panelProps} selected={selected} />}
-      {selected?.kind === 'wall' && <WallPanel {...panelProps} selected={selected} />}
+      {selected?.kind === 'text' && <TextPanel {...panelProps} selected={selected} />}
+      {selected?.kind === 'wall' && (
+        <WallPanel {...panelProps} selected={selected} onError={onError} />
+      )}
       {selected?.kind === 'door' && <DoorPanel {...panelProps} selected={selected} />}
       {selected?.kind === 'window' && <WindowPanel {...panelProps} selected={selected} />}
       {selected?.kind === 'fixture' && <FixturePanel {...panelProps} selected={selected} />}

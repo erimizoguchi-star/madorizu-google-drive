@@ -120,7 +120,7 @@ describe('窓を壁に載せ替える補正（fitWindowsToWalls）', () => {
       rooms: [mmRoom()],
       // end → start の順（x が減る向き）で浮いている窓
       windows: [
-        { id: 'w1', start: { x: 2000, y: 130 }, end: { x: 1000, y: 130 }, kind: 'awning', outward: -1 },
+        { id: 'w1', start: { x: 2000, y: 130 }, end: { x: 1000, y: 130 }, kind: 'casement', outward: -1 },
       ],
     })
     const out = normalizeFloorPlan(plan)
@@ -140,12 +140,12 @@ describe('窓を壁に載せ替える補正（fitWindowsToWalls）', () => {
 })
 
 describe('窓の開く向きの自動判定（orientWindowsOutward）', () => {
-  it('すべり出し窓は建物の外側を向く（上辺と下辺で逆向きになる）', () => {
+  it('片開き窓は建物の外側を向く（上辺と下辺で逆向きになる）', () => {
     const plan = makePlan({
       rooms: [mmRoom()],
       windows: [
-        { id: 'w-top', start: { x: 1000, y: 0 }, end: { x: 2000, y: 0 }, kind: 'awning' },
-        { id: 'w-bottom', start: { x: 1000, y: 7000 }, end: { x: 2000, y: 7000 }, kind: 'awning' },
+        { id: 'w-top', start: { x: 1000, y: 0 }, end: { x: 2000, y: 0 }, kind: 'casement' },
+        { id: 'w-bottom', start: { x: 1000, y: 7000 }, end: { x: 2000, y: 7000 }, kind: 'casement' },
       ],
     })
     const out = normalizeFloorPlan(plan)

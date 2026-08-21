@@ -1,19 +1,19 @@
-import type { Door, DoorKind, Fixture, FixtureType, FloorPlan, HiddenWall, Point, Room, RoomFillPattern, Stair, StairLayout, StairOrientation, Wall, Window, WindowKind } from '../types/floorPlan'
+import type { Door, DoorKind, Fixture, FixtureType, Floor, FloorPlan, HiddenWall, Point, Room, RoomFillPattern, Stair, StairLayout, StairOrientation, TextLabel, Wall, Window, WindowKind } from '../types/floorPlan'
 import { orientationToDirection } from '../constants/stairOptions'
 import { doorKindLabel } from '../constants/doorOptions'
 import { windowKindLabel } from '../constants/windowOptions'
 import { defaultFixtureSizeMm, fixtureTypeLabel } from '../constants/fixtureOptions'
 import {
   STAIR_DEFAULT_WIDTH_MM,
-  translateStair,
   withStairLength,
   withStairWidth,
 } from './resizeStair'
-import { isAreaJoHiddenByType } from '../constants/roomTypes'
+import { isAreaJoHiddenByType, toJapaneseRoomName } from '../constants/roomTypes'
 import type { LabelLineKind } from '../renderer/roomLabelLayout'
 import { mmToSvgUnits, snapSvgToMmGrid, type RectEdge } from './roomGeometry'
 import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom'
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
+import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
@@ -32,6 +32,7 @@ export type SelectedElementRef =
   | { kind: 'door'; floorId: string; doorId: string }
   | { kind: 'window'; floorId: string; windowId: string }
   | { kind: 'fixture'; floorId: string; fixtureId: string }
+  | { kind: 'text'; floorId: string; textId: string }
 
 /** @deprecated SelectedElementRef を使用 */
 export type SelectedRoomRef = { floorId: string; roomId: string }
@@ -108,6 +109,69 @@ export function findFixture(
   return { floorIndex, fixtureIndex, fixture: floorPlan.floors[floorIndex].fixtures[fixtureIndex] }
 }
 
+export function findTextLabel(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; textId: string }
+): { floorIndex: number; textIndex: number; label: TextLabel } | null {
+  const floorIndex = floorPlan.floors.findIndex((f) => f.id === ref.floorId)
+  if (floorIndex < 0) return null
+  const texts = floorPlan.floors[floorIndex].texts ?? []
+  const textIndex = texts.findIndex((t) => t.id === ref.textId)
+  if (textIndex < 0) return null
+  return { floorIndex, textIndex, label: texts[textIndex] }
+}
+
+export function updateTextLabel(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; textId: string },
+  patch: { text?: string; fontSize?: number | null; angle?: number | null }
+): FloorPlan {
+  const found = findTextLabel(floorPlan, ref)
+  if (!found) return floorPlan
+
+  const floors = floorPlan.floors.map((floor, fi) => {
+    if (fi !== found.floorIndex) return floor
+    const texts = floor.texts ?? []
+    return {
+      ...floor,
+      texts: texts.map((label, i) => {
+        if (i !== found.textIndex) return label
+        let updated = { ...label }
+        if (typeof patch.text === 'string') {
+          const trimmed = patch.text.trim()
+          updated.text = trimmed.length > 0 ? trimmed : label.text
+        }
+        if (patch.fontSize === null) delete updated.fontSize
+        else if (typeof patch.fontSize === 'number' && !Number.isNaN(patch.fontSize)) {
+          updated.fontSize = patch.fontSize
+        }
+        if (patch.angle === null) delete updated.angle
+        else if (typeof patch.angle === 'number' && Number.isFinite(patch.angle)) {
+          updated.angle = patch.angle
+        }
+        return updated
+      }),
+    }
+  })
+  return { ...floorPlan, floors }
+}
+
+export function deleteTextLabel(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; textId: string }
+): FloorPlan {
+  const found = findTextLabel(floorPlan, ref)
+  if (!found) return floorPlan
+  const floors = floorPlan.floors.map((floor, fi) => {
+    if (fi !== found.floorIndex) return floor
+    return {
+      ...floor,
+      texts: (floor.texts ?? []).filter((_, i) => i !== found.textIndex),
+    }
+  })
+  return { ...floorPlan, floors }
+}
+
 function applyLabelOffsetPatch<T extends Room | Stair>(target: T, patch: LabelOffsetPatch): T {
   const updated = { ...target } as Room & Stair
 
@@ -175,6 +239,10 @@ export function updateRoom(
         if (patch.type !== undefined) {
           updated.type = patch.type
           if (isAreaJoHiddenByType(patch.type)) updated.showAreaJo = false
+          // タイプ変更時は表示名も日本語デフォルトに合わせる（名前を明示変更していない場合）
+          if (patch.name === undefined) {
+            updated.name = toJapaneseRoomName(updated.name, patch.type)
+          }
         }
         if (patch.areaJo === null) delete updated.areaJo
         else if (typeof patch.areaJo === 'number' && !Number.isNaN(patch.areaJo)) {
@@ -269,16 +337,18 @@ export function updateStair(
         if (typeof patch.lengthMm === 'number' && patch.lengthMm > 0) {
           updated = withStairLength(updated, patch.lengthMm)
         }
-        if (patch.moveBy) {
-          updated = translateStair(updated, patch.moveBy.x, patch.moveBy.y)
-        }
+        // 平行移動は moveStair / setStairPolygon 側で開口追従と壁同期する
         updated = applyLabelOffsetPatch(updated, patch)
         return updated
       }),
     }
   })
 
-  return { ...floorPlan, floors }
+  let nextPlan: FloorPlan = { ...floorPlan, floors }
+  if (patch.moveBy) {
+    nextPlan = moveStair(nextPlan, ref, patch.moveBy)
+  }
+  return nextPlan
 }
 
 export function deleteStair(
@@ -288,11 +358,42 @@ export function deleteStair(
   const found = findStair(floorPlan, ref)
   if (!found) return floorPlan
 
+  const stair = found.stair
+  const edgeTol = mmToSvgUnits(50)
+  const spaceKey = `stair:${stair.id}`
+
   const floors = floorPlan.floors.map((floor, fi) => {
     if (fi !== found.floorIndex) return floor
     const next = {
       ...floor,
       stairs: floor.stairs.filter((_, si) => si !== found.stairIndex),
+      doors: floor.doors.filter(
+        (door) =>
+          !openingBelongsOnlyToSpace(
+            doorSamplePoints(door),
+            spaceKey,
+            stair.polygon,
+            floor,
+            edgeTol
+          )
+      ),
+      windows: floor.windows.filter(
+        (win) =>
+          !openingBelongsOnlyToSpace(
+            [win.start, win.end],
+            spaceKey,
+            stair.polygon,
+            floor,
+            edgeTol
+          )
+      ),
+      fixtures: floor.fixtures.filter((fixture) => {
+        const center = {
+          x: fixture.position.x + fixture.width / 2,
+          y: fixture.position.y + fixture.height / 2,
+        }
+        return !isPointInsidePolygon(center, stair.polygon)
+      }),
     }
     // 階段があった場所が空白にならないよう、壁と部屋の充填をやり直す
     return next.rooms.length > 0 ? syncFloorWalls(next) : next
@@ -326,11 +427,31 @@ export function deleteRoom(floorPlan: FloorPlan, ref: { floorId: string; roomId:
   const found = findRoom(floorPlan, ref)
   if (!found) return floorPlan
 
+  const room = found.room
+  const edgeTol = mmToSvgUnits(50)
+  const spaceKey = `room:${room.id}`
+
   const floors = floorPlan.floors.map((floor, fi) => {
     if (fi !== found.floorIndex) return floor
     const next = {
       ...floor,
       rooms: floor.rooms.filter((_, ri) => ri !== found.roomIndex),
+      // 消した部屋専用の開口・設備も一緒に消す（他室・階段共有壁のものは残す）
+      doors: floor.doors.filter(
+        (door) =>
+          !openingBelongsOnlyToSpace(doorSamplePoints(door), spaceKey, room.polygon, floor, edgeTol)
+      ),
+      windows: floor.windows.filter(
+        (win) =>
+          !openingBelongsOnlyToSpace([win.start, win.end], spaceKey, room.polygon, floor, edgeTol)
+      ),
+      fixtures: floor.fixtures.filter((fixture) => {
+        const center = {
+          x: fixture.position.x + fixture.width / 2,
+          y: fixture.position.y + fixture.height / 2,
+        }
+        return !isPointInsidePolygon(center, room.polygon)
+      }),
     }
     return next.rooms.length > 0 ? syncFloorWalls(next) : next
   })
@@ -360,9 +481,6 @@ export function updateDoor(
       doors: floor.doors.map((door, di) => {
         if (di !== found.doorIndex) return door
         let updated = { ...door }
-        if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
-          updated.width = mmToSvgUnits(patch.widthMm)
-        }
         if (typeof patch.angle === 'number' && Number.isFinite(patch.angle)) {
           updated.angle = patch.angle
         }
@@ -380,6 +498,13 @@ export function updateDoor(
             angle: ((updated.angle + 180) % 360 + 360) % 360,
             swing: updated.swing === 1 ? -1 : 1,
           }
+        }
+        if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
+          const widthSvg = mmToSvgUnits(Math.min(3000, Math.max(300, patch.widthMm)))
+          updated = reseatDoorOnWall(floor, updated, widthSvg)
+        } else if (patch.angle !== undefined || patch.flipHinge) {
+          // 向き変更後も壁上に載せ直す
+          updated = reseatDoorOnWall(floor, updated)
         }
         return updated
       }),
@@ -462,6 +587,8 @@ export function updateWindow(
     kind?: WindowKind
     /** すべり出し窓などが開く向き */
     outward?: 1 | -1
+    /** 窓の幅（mm）。壁上で中心を保って伸縮 */
+    widthMm?: number
   }
 ): FloorPlan {
   const found = findWindow(floorPlan, ref)
@@ -473,10 +600,24 @@ export function updateWindow(
       ...floor,
       windows: floor.windows.map((win, wi) => {
         if (wi !== found.windowIndex) return win
-        const updated = { ...win }
+        let updated = { ...win }
         if (patch.kind === 'sliding') delete updated.kind
         else if (patch.kind !== undefined) updated.kind = patch.kind
         if (patch.outward !== undefined) updated.outward = patch.outward
+        if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
+          const widthSvg = mmToSvgUnits(Math.min(6000, Math.max(300, patch.widthMm)))
+          const mid = {
+            x: (updated.start.x + updated.end.x) / 2,
+            y: (updated.start.y + updated.end.y) / 2,
+          }
+          const half = widthSvg / 2
+          const draft = {
+            ...updated,
+            start: { x: mid.x - half, y: mid.y },
+            end: { x: mid.x + half, y: mid.y },
+          }
+          updated = snapWindowOntoNearestWall(floor, draft, mid) ?? draft
+        }
         return updated
       }),
     }
@@ -501,7 +642,23 @@ export function moveRoom(
   return setRoomPolygon(floorPlan, ref, movedPolygon)
 }
 
-/** 部屋ポリゴンを絶対座標で置き換え（平行移動時は辺上の扉・窓と室内設備も追従） */
+export function moveStair(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; stairId: string },
+  delta: Point
+): FloorPlan {
+  const found = findStair(floorPlan, ref)
+  if (!found) return floorPlan
+
+  const dx = snapSvgToMmGrid(delta.x)
+  const dy = snapSvgToMmGrid(delta.y)
+  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return floorPlan
+
+  const movedPolygon = found.stair.polygon.map((p) => ({ x: p.x + dx, y: p.y + dy }))
+  return setStairPolygon(floorPlan, ref, movedPolygon)
+}
+
+/** 部屋ポリゴンを絶対座標で置き換え（平行移動時は、その部屋専用の扉・窓・室内設備だけ追従） */
 export function setRoomPolygon(
   floorPlan: FloorPlan,
   ref: { floorId: string; roomId: string },
@@ -509,40 +666,114 @@ export function setRoomPolygon(
 ): FloorPlan {
   const found = findRoom(floorPlan, ref)
   if (!found || polygon.length < 3) return floorPlan
+  return setSpacePolygon(floorPlan, found.floorIndex, {
+    kind: 'room',
+    index: found.roomIndex,
+    id: found.room.id,
+    oldPolygon: found.room.polygon,
+    newPolygon: polygon,
+  })
+}
 
-  const snapped = polygon.map((p) => ({
-    x: snapSvgToMmGrid(p.x),
-    y: snapSvgToMmGrid(p.y),
-  }))
-  const room = found.room
-  const dx = snapped[0].x - room.polygon[0].x
-  const dy = snapped[0].y - room.polygon[0].y
+/** 階段ポリゴンを絶対座標で置き換え（部屋と同じく、専用の扉・窓・設備だけ追従＋壁同期） */
+export function setStairPolygon(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; stairId: string },
+  polygon: Point[]
+): FloorPlan {
+  const found = findStair(floorPlan, ref)
+  if (!found || polygon.length < 3) return floorPlan
+  return setSpacePolygon(floorPlan, found.floorIndex, {
+    kind: 'stair',
+    index: found.stairIndex,
+    id: found.stair.id,
+    oldPolygon: found.stair.polygon,
+    newPolygon: polygon,
+  })
+}
+
+type SpaceMoveTarget = {
+  kind: 'room' | 'stair'
+  index: number
+  id: string
+  oldPolygon: Point[]
+  newPolygon: Point[]
+}
+
+function setSpacePolygon(
+  floorPlan: FloorPlan,
+  floorIndex: number,
+  target: SpaceMoveTarget
+): FloorPlan {
+  const incoming = target.newPolygon
+  const oldPolygon = target.oldPolygon
+  if (incoming.length < 3 || oldPolygon.length < 3) return floorPlan
+
+  const rawDx = incoming[0].x - oldPolygon[0].x
+  const rawDy = incoming[0].y - oldPolygon[0].y
+  // スナップ前の入力で平行移動かを判定（頂点ごとの mm スナップで形状がわずかに変わると追従が外れるため）
   const translating =
-    room.polygon.length === snapped.length &&
-    room.polygon.every((p, i) => {
-      const q = snapped[i]
-      return Math.abs(q.x - p.x - dx) < 0.05 && Math.abs(q.y - p.y - dy) < 0.05
+    oldPolygon.length === incoming.length &&
+    oldPolygon.every((p, i) => {
+      const q = incoming[i]
+      return Math.abs(q.x - p.x - rawDx) < 0.05 && Math.abs(q.y - p.y - rawDy) < 0.05
     })
 
+  const dx = translating ? snapSvgToMmGrid(rawDx) : 0
+  const dy = translating ? snapSvgToMmGrid(rawDy) : 0
+  const snapped = translating
+    ? oldPolygon.map((p) => ({ x: p.x + dx, y: p.y + dy }))
+    : incoming.map((p) => ({
+        x: snapSvgToMmGrid(p.x),
+        y: snapSvgToMmGrid(p.y),
+      }))
+
+  if (translating && Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return floorPlan
+
+  const spaceKey = `${target.kind}:${target.id}`
+  const edgeTol = mmToSvgUnits(50)
+
   const floors = floorPlan.floors.map((floor, fi) => {
-    if (fi !== found.floorIndex) return floor
+    if (fi !== floorIndex) return floor
     const next = {
       ...floor,
-      rooms: floor.rooms.map((r, ri) =>
-        ri === found.roomIndex ? { ...r, polygon: snapped } : r
-      ),
+      rooms:
+        target.kind === 'room'
+          ? floor.rooms.map((r, ri) => (ri === target.index ? { ...r, polygon: snapped } : r))
+          : floor.rooms,
+      stairs:
+        target.kind === 'stair'
+          ? floor.stairs.map((s, si) => (si === target.index ? { ...s, polygon: snapped } : s))
+          : floor.stairs,
       doors: translating
         ? floor.doors.map((door) => {
-            if (!isPointNearPolygonEdge(door.position, room.polygon, mmToSvgUnits(80))) return door
+            if (
+              !openingBelongsOnlyToSpace(
+                doorSamplePoints(door),
+                spaceKey,
+                oldPolygon,
+                floor,
+                edgeTol
+              )
+            ) {
+              return door
+            }
             return { ...door, position: { x: door.position.x + dx, y: door.position.y + dy } }
           })
         : floor.doors,
       windows: translating
         ? floor.windows.map((win) => {
-            const onEdge =
-              isPointNearPolygonEdge(win.start, room.polygon, mmToSvgUnits(80)) ||
-              isPointNearPolygonEdge(win.end, room.polygon, mmToSvgUnits(80))
-            if (!onEdge) return win
+            if (
+              !openingBelongsOnlyToSpace(
+                [win.start, win.end],
+                spaceKey,
+                oldPolygon,
+                floor,
+                edgeTol
+              )
+            ) {
+              return win
+            }
             return {
               ...win,
               start: { x: win.start.x + dx, y: win.start.y + dy },
@@ -552,7 +783,19 @@ export function setRoomPolygon(
         : floor.windows,
       fixtures: translating
         ? floor.fixtures.map((fixture) => {
-            if (!isPointInsidePolygon(fixture.position, room.polygon)) return fixture
+            const center = {
+              x: fixture.position.x + fixture.width / 2,
+              y: fixture.position.y + fixture.height / 2,
+            }
+            if (!isPointInsidePolygon(center, oldPolygon)) return fixture
+            if (
+              floorSpaceEntries(floor).some(
+                (other) =>
+                  other.key !== spaceKey && isPointInsidePolygon(center, other.polygon)
+              )
+            ) {
+              return fixture
+            }
             return {
               ...fixture,
               position: {
@@ -567,6 +810,47 @@ export function setRoomPolygon(
   })
 
   return { ...floorPlan, floors }
+}
+
+function doorSamplePoints(door: Door): Point[] {
+  const rad = (door.angle * Math.PI) / 180
+  const a = door.position
+  const b = {
+    x: a.x + door.width * Math.cos(rad),
+    y: a.y + door.width * Math.sin(rad),
+  }
+  return [a, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, b]
+}
+
+function floorSpaceEntries(floor: Floor): { key: string; polygon: Point[] }[] {
+  return [
+    ...floor.rooms.map((r) => ({ key: `room:${r.id}`, polygon: r.polygon })),
+    ...floor.stairs.map((s) => ({ key: `stair:${s.id}`, polygon: s.polygon })),
+  ]
+}
+
+/**
+ * 開口が「移動中の空間（部屋 or 階段）の辺上にあり、かつ他空間の辺上にはない」ときだけ true。
+ * 隣接して追加した部屋・階段を動かすとき、共有壁の扉・窓を持っていかない。
+ */
+function openingBelongsOnlyToSpace(
+  points: Point[],
+  spaceKey: string,
+  spacePolygon: Point[],
+  floor: Floor,
+  tolerance: number
+): boolean {
+  if (points.length === 0) return false
+  if (!points.every((p) => isPointNearPolygonEdge(p, spacePolygon, tolerance))) {
+    return false
+  }
+  for (const other of floorSpaceEntries(floor)) {
+    if (other.key === spaceKey) continue
+    if (points.some((p) => isPointNearPolygonEdge(p, other.polygon, tolerance))) {
+      return false
+    }
+  }
+  return true
 }
 
 function isPointInsidePolygon(point: Point, polygon: Point[]): boolean {
@@ -676,6 +960,8 @@ export function deleteSelectedElement(floorPlan: FloorPlan, ref: SelectedElement
       return deleteFixture(floorPlan, ref)
     case 'stair':
       return deleteStair(floorPlan, ref)
+    case 'text':
+      return deleteTextLabel(floorPlan, ref)
   }
 }
 
@@ -731,7 +1017,7 @@ export function listAllEditableElements(
     floor.stairs.map((stair) => ({
       key: `stair:${floor.id}:${stair.id}`,
       ref: { kind: 'stair' as const, floorId: floor.id, stairId: stair.id },
-      label: `${floor.label} / ${stair.name ?? '階段'}`,
+      label: `${floor.label} / 階段 ${stair.direction === 'down' ? 'DOWN' : 'UP'}`,
     }))
   )
   const walls = floorPlan.floors.flatMap((floor) =>
@@ -765,7 +1051,14 @@ export function listAllEditableElements(
       label: `${floor.label} / ${fixtureTypeLabel(fixture.type)}`,
     }))
   )
-  return [...rooms, ...stairs, ...walls, ...doors, ...windows, ...fixtures]
+  const texts = floorPlan.floors.flatMap((floor) =>
+    (floor.texts ?? []).map((t, i) => ({
+      key: `text:${floor.id}:${t.id}`,
+      ref: { kind: 'text' as const, floorId: floor.id, textId: t.id },
+      label: `${floor.label} / 文字「${t.text || i + 1}」`,
+    }))
+  )
+  return [...rooms, ...stairs, ...walls, ...doors, ...windows, ...fixtures, ...texts]
 }
 
 export function listAllRooms(
@@ -786,6 +1079,7 @@ export function elementRefToKey(ref: SelectedElementRef): string {
   if (ref.kind === 'wall') return `wall:${ref.floorId}:${ref.wallId}`
   if (ref.kind === 'door') return `door:${ref.floorId}:${ref.doorId}`
   if (ref.kind === 'window') return `window:${ref.floorId}:${ref.windowId}`
+  if (ref.kind === 'text') return `text:${ref.floorId}:${ref.textId}`
   return `fixture:${ref.floorId}:${ref.fixtureId}`
 }
 
@@ -805,5 +1099,6 @@ export function parseElementRefKey(key: string): SelectedElementRef | null {
   if (kind === 'door') return { kind: 'door', floorId, doorId: id }
   if (kind === 'window') return { kind: 'window', floorId, windowId: id }
   if (kind === 'fixture') return { kind: 'fixture', floorId, fixtureId: id }
+  if (kind === 'text') return { kind: 'text', floorId, textId: id }
   return null
 }

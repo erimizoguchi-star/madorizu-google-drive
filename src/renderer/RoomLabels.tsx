@@ -151,6 +151,8 @@ export function RoomLabels({
               fontFamily={LABEL.fontFamily}
               fontSize={line.fontSize}
               fontWeight={line.fontWeight}
+              fontStyle={LABEL.fontStyle}
+              letterSpacing={LABEL.letterSpacing}
               fill={line.fill}
               style={{ pointerEvents: 'none' }}
             >

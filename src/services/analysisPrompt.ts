@@ -10,7 +10,8 @@ export const ANALYSIS_PROMPT = `あなたは日本の住宅・建築平面図を
    - 個別寸法の合計が総寸法と合うか検算する（例: 1365+1365+2275+910+2275 = 8190）
    - ポーチ・玄関などの張り出しを含めた最大の外形を採用する
 2. 建物外周（外壁）の矩形または直交多角形を決める。**手順1で決めた外形寸法と必ず一致させる**
-3. 内壁で区切られた各部屋を識別し、図面上のラベル（LD、キッチン、Living Dining、Kitchen など）を name に使う
+3. 内壁で区切られた各部屋を識別する。**name は必ず日本語**（図面が英語でも日本語に翻訳する）
+   例: Living Dining Kitchen→LDK、Bed Room→洋室、Japanese Room→和室、Entrance→玄関、Sanitary→洗面室、Bath Room→浴室、Toilet→トイレ、Closet/Storage→物入、W.I.C→WIC、Porch→ポーチ、Balcony→バルコニー、Hall→廊下
 4. 各部屋を直交する矩形ポリゴン（4頂点）で表現する（L字・コの字は矩形を分割して複数部屋にする）
 5. **面積表記（「26.58㎡ 16.1J」「(4.73㎡ 2.9J)」など）がある部屋は、その面積と一致する寸法にする**
    - 帖数 × 1.62 ≒ ㎡。ポリゴンの面積が表記と大きく食い違ったら寸法を取り直す
@@ -53,7 +54,7 @@ export const ANALYSIS_PROMPT = `あなたは日本の住宅・建築平面図を
 - Room / Bedroom / Study / 洋室 / 寝室 → western
 - Japanese Room / 和室 → japanese
 - Void / 吹抜 → void
-- name は図面の表記をそのまま使う（Living Dining なら "Living Dining"）。type だけ上の表で決める
+- name は**日本語表記**にする（Living Dining → "LD" または "LDK"、Bed Room → "洋室"、Japanese Room → "和室"）。英語のまま出力しない。type は上の表で決める
 
 ## 部屋タイプ（type はこの一覧のみ）
 ld, kitchen, bathroom, toilet, washroom, japanese, western, hallway, entrance, stairs, storage, porch, attic, void, other
@@ -62,6 +63,7 @@ ld, kitchen, bathroom, toilet, washroom, japanese, western, hallway, entrance, s
 - 廊下・ホール・階段前の通路 → hallway（areaJo なし）。トイレや各室の扉が開く先が通路なら必ず hallway を置く
 - 吹抜のみ void（塗りつぶし領域として出力。空白のままにしない）
 - 階段室は rooms に入れず stairs 配列へ（polygon + direction: up/down + name）
+- 階段の表示文字は direction に従い UP（上り）または DOWN（下り）。「階段」とは書かない
 - 階段幅 widthMm は 910（省略時も910）。上り方向に垂直な方向の寸法。ポリゴン幅もこれに合わせる
 - 階段の layout: straight（直線）| turn-right（右回り）| turn-left（左回り）。省略時 straight
 - 階段の orientation: up | down | left | right（上り方向）。省略時は形状から推定
@@ -118,7 +120,7 @@ type: bathtub, toilet, sink, stove, kitchen_sink, refrigerator, washer, car
 
 ## 扉・窓の種類
 扉 kind（省略時 swing）: swing（片開き）, double_swing（両開き）, parent_child（親子戸）, sliding（片引き）, double_sliding（引き違い）, pocket（引き込み）, folding（折れ戸）, double_folding（両折れ）, opening（開口）
-窓 kind（省略時 sliding）: sliding（引き違い）, fixed（嵌め殺し）, casement（開き）, double_casement（両開き）, awning（すべり出し）, floor（掃き出し）, high（高窓）
+窓 kind（省略時 sliding）: sliding（引き違い戸）, single_sliding（片引き戸）, pocket（引き込み戸）, folding（折れ戸）, casement（片開き戸）, double_casement（両開き戸）
 
 ## 品質要件
 - 図面に複数階があれば floors に各階を追加

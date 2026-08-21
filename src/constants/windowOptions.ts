@@ -1,18 +1,36 @@
 import type { WindowKind } from '../types/floorPlan'
 
+/** 参考チャート表記（引き違い戸〜両開き戸）に合わせた窓種 */
 export const WINDOW_KIND_OPTIONS: { value: WindowKind; label: string; hint: string }[] = [
-  { value: 'sliding', label: '引き違い窓', hint: '左右にすれ違う一般的な窓' },
-  { value: 'fixed', label: '嵌め殺し窓', hint: '開閉しない固定窓' },
-  { value: 'casement', label: '開き窓', hint: '縦軸で外へ開く窓' },
-  { value: 'double_casement', label: '両開き窓', hint: '左右2枚の開き窓' },
-  { value: 'awning', label: 'すべり出し窓', hint: '下端を軸に外へ突き出す窓' },
-  { value: 'floor', label: '掃き出し窓', hint: '床まで続く大きな引き違い窓' },
-  { value: 'high', label: '高窓', hint: '壁上部の横長の窓' },
+  { value: 'sliding', label: '引き違い戸', hint: '2枚が中央で重なる引き違い' },
+  { value: 'single_sliding', label: '片引き戸', hint: '1枚を片側へ引く' },
+  { value: 'pocket', label: '引き込み戸', hint: '壁の中へ引き込む' },
+  { value: 'folding', label: '折れ戸', hint: '中央で折り畳む' },
+  { value: 'casement', label: '片開き戸', hint: '丁番で片側へ開く' },
+  { value: 'double_casement', label: '両開き戸', hint: '左右2枚が開く' },
 ]
 
+/** 旧データ互換 */
+const LEGACY_WINDOW_KIND: Record<string, WindowKind> = {
+  fixed: 'sliding',
+  floor: 'sliding',
+  high: 'sliding',
+  awning: 'casement',
+  double_sliding: 'sliding',
+}
+
+export function normalizeWindowKind(value: unknown): WindowKind {
+  if (typeof value === 'string') {
+    if (isValidWindowKind(value)) return value
+    const mapped = LEGACY_WINDOW_KIND[value]
+    if (mapped) return mapped
+  }
+  return 'sliding'
+}
+
 export function windowKindLabel(kind: WindowKind | undefined): string {
-  const k = kind ?? 'sliding'
-  return WINDOW_KIND_OPTIONS.find((o) => o.value === k)?.label ?? '窓'
+  const k = normalizeWindowKind(kind)
+  return WINDOW_KIND_OPTIONS.find((o) => o.value === k)?.label ?? '引き違い戸'
 }
 
 export function isValidWindowKind(value: unknown): value is WindowKind {

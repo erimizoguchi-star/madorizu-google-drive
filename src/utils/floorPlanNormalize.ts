@@ -10,12 +10,13 @@ import type {
   Stair,
   StairLayout,
   StairOrientation,
+  TextLabel,
   Wall,
   Window,
 } from '../types/floorPlan'
 import { isValidDoorKind } from '../constants/doorOptions'
-import { isValidWindowKind } from '../constants/windowOptions'
-import { isAreaJoHiddenByType } from '../constants/roomTypes'
+import { normalizeWindowKind } from '../constants/windowOptions'
+import { isAreaJoHiddenByType, toJapaneseRoomName } from '../constants/roomTypes'
 import { closeCoverageGaps } from './closeCoverageGaps'
 import { syncFloorWalls } from './ensureExteriorWalls'
 import { orientWindowsOutward } from './windowOrientation'
@@ -203,7 +204,7 @@ function sanitizeRoom(room: Room, index: number, useMm: boolean): Room | null {
   return {
     ...room,
     id: room.id || `room-${index}`,
-    name: room.name || `部屋${index + 1}`,
+    name: toJapaneseRoomName(room.name, type),
     type,
     polygon: scaledPolygon,
     ...(isAreaJoHiddenByType(type) ? { showAreaJo: false as const } : {}),
@@ -311,14 +312,15 @@ function sanitizeWindow(win: Window, index: number, useMm: boolean): Window | nu
   if (!start || !end) return null
   if (Math.hypot(end.x - start.x, end.y - start.y) < 1) return null
 
-  const kind = isValidWindowKind(win.kind) ? win.kind : undefined
+  const kind = normalizeWindowKind(win.kind)
+  const { kind: _ignoredKind, ...rest } = win
 
   return {
-    ...win,
+    ...rest,
     id: win.id || `window-${index}`,
     start: useMm ? scalePoint(prepareMmPoint(start)) : start,
     end: useMm ? scalePoint(prepareMmPoint(end)) : end,
-    ...(kind && kind !== 'sliding' ? { kind } : {}),
+    ...(kind !== 'sliding' ? { kind } : {}),
   }
 }
 
@@ -353,6 +355,26 @@ function sanitizeFixture(fixture: Fixture, index: number, useMm: boolean): Fixtu
     width: useMm ? mmToSvgUnits(snapMm(widthMm)) : widthMm,
     height: useMm ? mmToSvgUnits(snapMm(heightMm)) : heightMm,
     angle: fixture.angle != null ? toNumber(fixture.angle, 0) : undefined,
+  }
+}
+
+function sanitizeTextLabel(label: TextLabel, index: number, useMm: boolean): TextLabel | null {
+  const text = typeof label.text === 'string' ? label.text.trim() : ''
+  if (!text) return null
+  const pos = label.position
+  if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return null
+  const fontSize =
+    typeof label.fontSize === 'number' && Number.isFinite(label.fontSize)
+      ? Math.min(48, Math.max(6, label.fontSize))
+      : undefined
+  const angle =
+    typeof label.angle === 'number' && Number.isFinite(label.angle) ? label.angle : undefined
+  return {
+    id: label.id || `text-${index}`,
+    text,
+    position: useMm ? scalePoint(pos) : { x: pos.x, y: pos.y },
+    ...(fontSize != null ? { fontSize } : {}),
+    ...(angle != null ? { angle } : {}),
   }
 }
 
@@ -516,7 +538,7 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
   const base: Stair = {
     ...stair,
     id: stair.id || `stair-${index}`,
-    name: stair.name ?? '階段',
+    name: stair.direction === 'down' ? 'DOWN' : 'UP',
     direction: stair.direction === 'down' ? 'down' : 'up',
     widthMm,
     ...(layout ? { layout } : {}),
@@ -554,6 +576,9 @@ function sanitizeFloor(floor: Floor, index: number, useMm: boolean): Floor {
     stairs: (floor.stairs ?? [])
       .map((stair, i) => sanitizeStair(stair as Stair, i, useMm))
       .filter((stair): stair is Stair => stair != null),
+    texts: (floor.texts ?? [])
+      .map((label, i) => sanitizeTextLabel(label as TextLabel, i, useMm))
+      .filter((label): label is TextLabel => label != null),
   })
 
   return orientWindowsOutward(fitWindowsToWalls(fitDoorsToWalls(closeCoverageGaps(draft))))
@@ -573,6 +598,7 @@ export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {
       windows: floor.windows ?? [],
       fixtures: floor.fixtures ?? [],
       stairs: floor.stairs ?? [],
+      texts: floor.texts ?? [],
       id: floor.id ?? `floor-${i}`,
       name: floor.name ?? `${i + 1}F`,
       label: floor.label ?? `${i + 1}階`,

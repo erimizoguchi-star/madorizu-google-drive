@@ -97,15 +97,14 @@ export interface Door {
   kind?: DoorKind
 }
 
-/** 引き違い / 嵌め殺し / 開き / 両開き / すべり出し / 掃き出し / 高窓 */
+/** 引き違い / 片引き / 引き込み / 折れ / 片開き / 両開き */
 export type WindowKind =
   | 'sliding'
-  | 'fixed'
+  | 'single_sliding'
+  | 'pocket'
+  | 'folding'
   | 'casement'
   | 'double_casement'
-  | 'awning'
-  | 'floor'
-  | 'high'
 
 export interface Window {
   id: string
@@ -114,7 +113,7 @@ export interface Window {
   /** 省略時は引き違い窓 */
   kind?: WindowKind
   /**
-   * すべり出し窓・開き窓が開く向き。
+   * 開き窓・片引き・引き込みの向き。
    * start→end の進行方向に対して 1 = 右側、-1 = 左側。
    * 通常は建物の外側になるよう自動判定する（省略時は 1）。
    */
@@ -156,11 +155,22 @@ export interface Stair {
   orientation?: StairOrientation
   /** 階段幅 mm（省略時 910） */
   widthMm?: number
-  /** 表示名（省略時は「階段」） */
+  /** 表示ラベル用。省略時は direction から UP / DOWN を出す */
   name?: string
   showName?: boolean
   labelFontSize?: number
   nameLabelOffset?: Point
+}
+
+/** 部屋・階段に紐づかない自由配置の文字 */
+export interface TextLabel {
+  id: string
+  text: string
+  position: Point
+  /** フォントサイズ pt（省略時は LABEL.defaultFontSize） */
+  fontSize?: number
+  /** 回転（度）。省略時は 0 */
+  angle?: number
 }
 
 /**
@@ -188,6 +198,8 @@ export interface Floor {
   windows: Window[]
   fixtures: Fixture[]
   stairs: Stair[]
+  /** 自由配置の文字（省略時は空） */
+  texts?: TextLabel[]
 }
 
 export interface FloorPlan {

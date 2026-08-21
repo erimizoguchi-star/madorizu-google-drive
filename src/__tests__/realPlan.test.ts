@@ -60,7 +60,7 @@ describe('実図面のAI出力の正規化', () => {
 
   it('向きを持つ窓には外向きが自動設定される', () => {
     const directional = floor.windows.filter((w) =>
-      ['awning', 'casement', 'double_casement'].includes(w.kind ?? 'sliding')
+      ['casement', 'double_casement', 'single_sliding', 'pocket', 'folding'].includes(w.kind ?? 'sliding')
     )
     for (const win of directional) {
       expect(win.outward === 1 || win.outward === -1, `窓 ${win.id} に向きが付いていない`).toBe(

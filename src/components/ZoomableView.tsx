@@ -22,7 +22,7 @@ function isPanTarget(target: EventTarget | null, editInteractive: boolean): bool
   if (!(target instanceof Element)) return true
   if (
     target.closest(
-      '[data-label-kind], [data-no-pan], .place-overlay, .room-label-line, .room-label, .room-resize-handle, .edit-handle, .door-hit, .door-hit-line, .window-hit-line, .fixture-hit, .wall-hit-line, .room-draggable'
+      '[data-label-kind], [data-no-pan], .place-overlay, .room-label-line, .room-label, .room-resize-handle, .edit-handle, .door-hit, .door-hit-line, .window-hit-line, .fixture-hit, .wall-hit-line, .room-draggable, .text-label'
     )
   ) {
     return false

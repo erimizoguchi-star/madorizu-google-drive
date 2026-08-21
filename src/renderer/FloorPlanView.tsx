@@ -45,7 +45,8 @@ interface FloorPlanViewProps {
   ) => void
   onWindowMove?: (ref: SelectedElementRef & { kind: 'window' }, start: Point, end: Point) => void
   onFixtureMove?: (ref: SelectedElementRef & { kind: 'fixture' }, position: Point) => void
-  onStairMove?: (ref: SelectedElementRef & { kind: 'stair' }, delta: Point) => void
+  onStairMove?: (ref: SelectedElementRef & { kind: 'stair' }, polygon: Point[]) => void
+  onTextMove?: (ref: SelectedElementRef & { kind: 'text' }, position: Point) => void
   onFixtureResize?: (
     ref: SelectedElementRef & { kind: 'fixture' },
     corner: FixtureCorner,
@@ -64,10 +65,11 @@ interface FloorPlanViewProps {
 
 const BASE_PLACE_HINTS: Record<Exclude<PlaceKind, `fixture:${string}`>, string> = {
   room: '間取図上をクリックして部屋を配置（配置後ドラッグで移動できます）',
-  door: '壁付近をクリックして扉を追加（続けて追加できます・Escで終了）',
-  window: '壁付近をクリックして窓を追加（続けて追加できます・Escで終了）',
-  opening: '壁付近をクリックして開口部を追加（続けて追加できます・Escで終了）',
+  door: '壁をクリックして扉を追加（続けて追加できます・Escで終了）',
+  window: '壁をクリックして窓を追加（続けて追加できます・Escで終了）',
+  opening: '壁をクリックして開口部を追加（続けて追加できます・Escで終了）',
   wall: '始点→終点の順にクリックして壁を追加',
+  text: 'クリックして文字を配置（続けて追加できます・Escで終了）',
 }
 
 function placeHint(kind: PlaceKind): string {
@@ -102,6 +104,7 @@ export function FloorPlanView({
   onFixtureMove,
   onFixtureResize,
   onStairMove,
+  onTextMove,
   onPlaceClick,
 }: FloorPlanViewProps) {
   const placing = !!placeKind && !!onPlaceClick
@@ -326,6 +329,9 @@ export function FloorPlanView({
                   ? selected.fixtureId
                   : null
               }
+              selectedTextId={
+                selected?.kind === 'text' && selected.floorId === floor.id ? selected.textId : null
+              }
               placeMode={placing}
               wallDraftStart={placeKind === 'wall' ? wallDraftStart : null}
               onPlaceClick={
@@ -344,8 +350,8 @@ export function FloorPlanView({
               }
               onStairMove={
                 onStairMove && editable && !placing && !adjustingOverlay
-                  ? (stairId, delta) =>
-                      onStairMove({ kind: 'stair', floorId: floor.id, stairId }, delta)
+                  ? (stairId, polygon) =>
+                      onStairMove({ kind: 'stair', floorId: floor.id, stairId }, polygon)
                   : undefined
               }
               onWallSelect={
@@ -366,6 +372,11 @@ export function FloorPlanView({
               onFixtureSelect={
                 !placing && !adjustingOverlay && onSelect
                   ? (fixtureId) => onSelect({ kind: 'fixture', floorId: floor.id, fixtureId })
+                  : undefined
+              }
+              onTextSelect={
+                !placing && !adjustingOverlay && onSelect
+                  ? (textId) => onSelect({ kind: 'text', floorId: floor.id, textId })
                   : undefined
               }
               onRoomLabelOffsetChange={
@@ -452,6 +463,12 @@ export function FloorPlanView({
                         corner,
                         position
                       )
+                  : undefined
+              }
+              onTextMove={
+                onTextMove && editable && !placing && !adjustingOverlay
+                  ? (textId, position) =>
+                      onTextMove({ kind: 'text', floorId: floor.id, textId }, position)
                   : undefined
               }
             />

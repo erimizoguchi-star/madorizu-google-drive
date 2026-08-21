@@ -68,43 +68,36 @@ function GridPattern({ polygon, clipId }: { polygon: Room['polygon']; clipId: st
 
 function WoodPattern({ polygon, clipId }: { polygon: Room['polygon']; clipId: string }) {
   const { minX, maxX, minY, maxY } = polygonBounds(polygon)
-  const { plankSpacing, grainSpacing, grainStepX, seamColor, seamWidth, grainColor, grainWidth, grainOpacity, seamOpacity } =
-    WOOD_FLOORING
-
+  const { spacing, color, width, opacity, direction } = WOOD_FLOORING
   const elements: ReactElement[] = []
 
-  for (let y = minY + plankSpacing; y < maxY; y += plankSpacing) {
-    elements.push(
-      <line
-        key={`seam-${y}`}
-        x1={minX}
-        y1={y}
-        x2={maxX}
-        y2={y}
-        stroke={seamColor}
-        strokeWidth={seamWidth}
-        opacity={seamOpacity}
-      />
-    )
-  }
-
-  for (let y = minY + grainSpacing; y < maxY; y += grainSpacing) {
-    const plankIndex = Math.floor((y - minY) / plankSpacing)
-    const drift = (plankIndex % 3) * 0.25
-    for (let x = minX; x < maxX; x += grainStepX) {
-      const len = 16 + ((x + plankIndex * 17) % 11)
-      const wobble = ((x + y) % 5) * 0.08
+  if (direction === 'horizontal') {
+    for (let y = minY + spacing; y < maxY; y += spacing) {
       elements.push(
         <line
-          key={`grain-${y}-${x}`}
+          key={`wood-h-${y}`}
+          x1={minX}
+          y1={y}
+          x2={maxX}
+          y2={y}
+          stroke={color}
+          strokeWidth={width}
+          opacity={opacity}
+        />
+      )
+    }
+  } else {
+    for (let x = minX + spacing; x < maxX; x += spacing) {
+      elements.push(
+        <line
+          key={`wood-v-${x}`}
           x1={x}
-          y1={y + drift}
-          x2={x + len}
-          y2={y + drift + wobble}
-          stroke={grainColor}
-          strokeWidth={grainWidth}
-          opacity={grainOpacity}
-          strokeLinecap="round"
+          y1={minY}
+          x2={x}
+          y2={maxY}
+          stroke={color}
+          strokeWidth={width}
+          opacity={opacity}
         />
       )
     }

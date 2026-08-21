@@ -9,6 +9,7 @@ import type {
   Point,
   Room,
   RoomType,
+  TextLabel,
   Wall,
   Window,
 } from '../types/floorPlan'
@@ -21,6 +22,7 @@ export type PlaceKind =
   | 'window'
   | 'opening'
   | 'wall'
+  | 'text'
   | `fixture:${FixtureType}`
 
 export function isFixturePlaceKind(kind: PlaceKind): kind is `fixture:${FixtureType}` {
@@ -124,48 +126,87 @@ export type SnapTarget = {
   wall?: Wall
 }
 
-/** 壁と部屋・階段の辺から、クリック位置に最も近い線分へ吸着 */
+function snapFromSegment(
+  point: Point,
+  start: Point,
+  end: Point,
+  wall?: Wall
+): SnapTarget | null {
+  const len = Math.hypot(end.x - start.x, end.y - start.y)
+  if (len < EPS) return null
+  const { point: projected, dist } = projectPointOnSegment(point, start, end)
+  return {
+    start,
+    end,
+    projected,
+    angle: segmentAngleDeg(start, end),
+    distance: dist,
+    wall,
+  }
+}
+
+function betterSnap(a: SnapTarget | null, b: SnapTarget | null): SnapTarget | null {
+  if (!a) return b
+  if (!b) return a
+  return b.distance < a.distance ? b : a
+}
+
+/**
+ * 壁と部屋・階段の辺から、クリック位置に最も近い線分へ吸着。
+ * 壁があれば壁を優先（部屋辺よりわずかに遠くても壁へ載せる）。
+ * preferredWallId があるときは、その壁が許容距離内なら必ずそれを使う。
+ */
 export function findNearestSnapTarget(
   floor: Floor,
   point: Point,
-  maxDistSvg = mmToSvgUnits(SNAP_MAX_MM)
+  maxDistSvg = mmToSvgUnits(SNAP_MAX_MM),
+  options?: { preferredWallId?: string; wallsOnly?: boolean }
 ): SnapTarget | null {
-  let best: SnapTarget | null = null
-
-  const consider = (start: Point, end: Point, wall?: Wall) => {
-    const len = Math.hypot(end.x - start.x, end.y - start.y)
-    if (len < EPS) return
-    const { point: projected, dist } = projectPointOnSegment(point, start, end)
-    if (dist > maxDistSvg) return
-    if (!best || dist < best.distance) {
-      best = {
-        start,
-        end,
-        projected,
-        angle: segmentAngleDeg(start, end),
-        distance: dist,
-        wall,
-      }
+  const preferredId = options?.preferredWallId
+  if (preferredId) {
+    const preferred = floor.walls.find((w) => w.id === preferredId)
+    if (preferred) {
+      const snap = snapFromSegment(point, preferred.start, preferred.end, preferred)
+      // 指定壁上なら、クリックが壁から多少離れてもその壁へ投影する
+      if (snap && snap.distance <= maxDistSvg * 2.5) return snap
+      // 離れていても「指定壁の最近傍」に置く（設置先を明示したとき用）
+      if (snap) return snap
     }
   }
 
+  let bestWall: SnapTarget | null = null
   for (const wall of floor.walls) {
-    consider(wall.start, wall.end, wall)
+    const snap = snapFromSegment(point, wall.start, wall.end, wall)
+    if (!snap || snap.distance > maxDistSvg) continue
+    bestWall = betterSnap(bestWall, snap)
   }
+  if (options?.wallsOnly) return bestWall
+
+  let bestEdge: SnapTarget | null = null
+  const edgeCandidates: Array<{ start: Point; end: Point }> = []
   for (const room of floor.rooms) {
     const poly = room.polygon
     for (let i = 0; i < poly.length; i++) {
-      consider(poly[i], poly[(i + 1) % poly.length])
+      edgeCandidates.push({ start: poly[i], end: poly[(i + 1) % poly.length] })
     }
   }
   for (const stair of floor.stairs) {
     const poly = stair.polygon
     for (let i = 0; i < poly.length; i++) {
-      consider(poly[i], poly[(i + 1) % poly.length])
+      edgeCandidates.push({ start: poly[i], end: poly[(i + 1) % poly.length] })
     }
   }
+  for (const edge of edgeCandidates) {
+    const snap = snapFromSegment(point, edge.start, edge.end)
+    if (!snap || snap.distance > maxDistSvg) continue
+    bestEdge = betterSnap(bestEdge, snap)
+  }
 
-  return best
+  // 壁が近いときは壁を優先（部屋辺がわずかに近くても壁へ）
+  if (bestWall && bestEdge) {
+    return bestWall.distance <= bestEdge.distance + mmToSvgUnits(200) ? bestWall : bestEdge
+  }
+  return bestWall ?? bestEdge
 }
 
 /** @deprecated findNearestSnapTarget を使用 */
@@ -231,6 +272,79 @@ function doorHingeFromCenter(center: Point, angleDeg: number, widthSvg: number):
   })
 }
 
+/** 扉の中心（開口の中央） */
+export function doorCenter(door: { position: Point; width: number; angle: number }): Point {
+  const rad = (door.angle * Math.PI) / 180
+  return {
+    x: door.position.x + Math.cos(rad) * (door.width / 2),
+    y: door.position.y + Math.sin(rad) * (door.width / 2),
+  }
+}
+
+/**
+ * クリック／ドラッグ位置を壁上に載せ、幅が収まるようクランプした扉にする。
+ * 近くに壁がなければ null（呼び出し側は現状維持）。
+ */
+export function snapDoorOntoNearestWall(
+  floor: Floor,
+  door: Door,
+  pointer: Point,
+  options?: { preferredWallId?: string; maxDistSvg?: number }
+): Door | null {
+  const snap = findNearestSnapTarget(
+    floor,
+    pointer,
+    options?.maxDistSvg ?? mmToSvgUnits(SNAP_MAX_MM),
+    { preferredWallId: options?.preferredWallId, wallsOnly: true }
+  )
+  if (!snap) return null
+  const half = door.width / 2
+  const center = clampCenterOnSegment(snap.start, snap.end, snap.projected, half)
+  const hinge = doorHingeFromCenter(center, snap.angle, door.width)
+  return {
+    ...door,
+    position: { x: round(hinge.x), y: round(hinge.y) },
+    angle: snap.angle,
+    width: door.width,
+  }
+}
+
+/** 幅変更時など、中心を保ったまま壁上に載せ直す */
+export function reseatDoorOnWall(floor: Floor, door: Door, widthSvg?: number): Door {
+  const nextWidth = widthSvg ?? door.width
+  const center = doorCenter({ ...door, width: door.width })
+  const seated = snapDoorOntoNearestWall(
+    floor,
+    { ...door, width: nextWidth },
+    center,
+    { maxDistSvg: mmToSvgUnits(SNAP_MAX_MM * 2) }
+  )
+  if (seated) return seated
+  // 壁が見つからないときは丁番固定で幅だけ変える
+  return { ...door, width: nextWidth }
+}
+
+/**
+ * 窓を壁上に載せ、長さを保ったまま平行移動／端点調整する。
+ */
+export function snapWindowOntoNearestWall(
+  floor: Floor,
+  win: Window,
+  pointer: Point,
+  options?: { preferredWallId?: string }
+): Window | null {
+  const len = Math.hypot(win.end.x - win.start.x, win.end.y - win.start.y)
+  const half = Math.max(len / 2, mmToSvgUnits(100))
+  const snap = findNearestSnapTarget(floor, pointer, mmToSvgUnits(SNAP_MAX_MM), {
+    preferredWallId: options?.preferredWallId,
+    wallsOnly: true,
+  })
+  if (!snap) return null
+  const center = clampCenterOnSegment(snap.start, snap.end, snap.projected, half)
+  const { start, end } = alongSegment(snap.start, snap.end, center, half)
+  return { ...win, start, end }
+}
+
 export function addRoomAt(
   floorPlan: FloorPlan,
   floorId: string,
@@ -283,7 +397,14 @@ export function addDoorAt(
   floorPlan: FloorPlan,
   floorId: string,
   position: Point,
-  options?: { widthMm?: number; kind?: DoorKind; swing?: 1 | -1 }
+  options?: {
+    widthMm?: number
+    kind?: DoorKind
+    swing?: 1 | -1
+    preferredWallId?: string
+    /** true のとき壁・辺への吸着必須（失敗時は error） */
+    requireSnap?: boolean
+  }
 ): { floorPlan: FloorPlan; doorId: string } | { error: string } {
   const floor = floorPlan.floors.find((f) => f.id === floorId)
   if (!floor) return { error: '階が見つかりません。' }
@@ -292,7 +413,16 @@ export function addDoorAt(
   const widthMm =
     options?.widthMm ?? (kind === 'opening' ? DEFAULT_OPENING_WIDTH_MM : DEFAULT_DOOR_WIDTH_MM)
   const widthSvg = mmToSvgUnits(widthMm)
-  const snap = findNearestSnapTarget(floor, position)
+  const requireSnap = options?.requireSnap !== false
+  const snap = findNearestSnapTarget(floor, position, mmToSvgUnits(SNAP_MAX_MM), {
+    preferredWallId: options?.preferredWallId,
+  })
+
+  if (!snap) {
+    if (requireSnap) {
+      return { error: '壁または部屋の辺の近くをクリックしてください。' }
+    }
+  }
 
   let angle = 0
   let hinge: Point
@@ -322,34 +452,65 @@ export function addDoorAt(
   return { floorPlan: next, doorId }
 }
 
+/** 選択中の壁の中央に扉／開口を置く */
+export function addDoorOnWall(
+  floorPlan: FloorPlan,
+  floorId: string,
+  wallId: string,
+  options?: { widthMm?: number; kind?: DoorKind; swing?: 1 | -1 }
+): { floorPlan: FloorPlan; doorId: string } | { error: string } {
+  const floor = floorPlan.floors.find((f) => f.id === floorId)
+  if (!floor) return { error: '階が見つかりません。' }
+  const wall = floor.walls.find((w) => w.id === wallId)
+  if (!wall) return { error: '壁が見つかりません。' }
+  const mid = {
+    x: (wall.start.x + wall.end.x) / 2,
+    y: (wall.start.y + wall.end.y) / 2,
+  }
+  return addDoorAt(floorPlan, floorId, mid, {
+    ...options,
+    preferredWallId: wallId,
+    requireSnap: true,
+  })
+}
+
 export function addWindowAt(
   floorPlan: FloorPlan,
   floorId: string,
   position: Point,
-  options?: { widthMm?: number }
+  options?: { widthMm?: number; preferredWallId?: string; requireSnap?: boolean }
 ): { floorPlan: FloorPlan; windowId: string } | { error: string } {
   const floor = floorPlan.floors.find((f) => f.id === floorId)
   if (!floor) return { error: '階が見つかりません。' }
 
   const widthMm = options?.widthMm ?? DEFAULT_WINDOW_WIDTH_MM
   const half = mmToSvgUnits(widthMm) / 2
-  const snap = findNearestSnapTarget(floor, position)
+  const requireSnap = options?.requireSnap !== false
+  const snap = findNearestSnapTarget(floor, position, mmToSvgUnits(SNAP_MAX_MM), {
+    preferredWallId: options?.preferredWallId,
+  })
 
-  let start: Point
-  let end: Point
-
-  if (snap) {
-    const center = clampCenterOnSegment(snap.start, snap.end, snap.projected, half)
-    ;({ start, end } = alongSegment(snap.start, snap.end, center, half))
-  } else {
+  if (!snap) {
+    if (requireSnap) {
+      return { error: '壁または部屋の辺の近くをクリックしてください。' }
+    }
     const c = snapPoint(position)
-    start = { x: round(c.x - half), y: round(c.y) }
-    end = { x: round(c.x + half), y: round(c.y) }
+    const start = { x: round(c.x - half), y: round(c.y) }
+    const end = { x: round(c.x + half), y: round(c.y) }
+    const windowId = uid('win')
+    const next = updateFloor(floorPlan, floorId, (f) => ({
+      ...f,
+      windows: [...f.windows, { id: windowId, start, end }],
+    }))
+    return { floorPlan: next, windowId }
   }
+
+  const center = clampCenterOnSegment(snap.start, snap.end, snap.projected, half)
+  let { start, end } = alongSegment(snap.start, snap.end, center, half)
 
   // スナップ後に長さゼロになった場合のフォールバック
   if (Math.hypot(end.x - start.x, end.y - start.y) < EPS) {
-    const c = snapPoint(snap?.projected ?? position)
+    const c = snapPoint(snap.projected)
     start = { x: round(c.x - half), y: round(c.y) }
     end = { x: round(c.x + half), y: round(c.y) }
   }
@@ -362,6 +523,28 @@ export function addWindowAt(
     windows: [...f.windows, win],
   }))
   return { floorPlan: next, windowId }
+}
+
+/** 選択中の壁の中央に窓を置く */
+export function addWindowOnWall(
+  floorPlan: FloorPlan,
+  floorId: string,
+  wallId: string,
+  options?: { widthMm?: number }
+): { floorPlan: FloorPlan; windowId: string } | { error: string } {
+  const floor = floorPlan.floors.find((f) => f.id === floorId)
+  if (!floor) return { error: '階が見つかりません。' }
+  const wall = floor.walls.find((w) => w.id === wallId)
+  if (!wall) return { error: '壁が見つかりません。' }
+  const mid = {
+    x: (wall.start.x + wall.end.x) / 2,
+    y: (wall.start.y + wall.end.y) / 2,
+  }
+  return addWindowAt(floorPlan, floorId, mid, {
+    ...options,
+    preferredWallId: wallId,
+    requireSnap: true,
+  })
 }
 
 export function addFixtureAt(
@@ -438,5 +621,32 @@ export function addWallSegment(
     walls: [...f.walls, wall],
   }))
   return { floorPlan: next, wallId }
+}
+
+export const DEFAULT_TEXT_LABEL = 'テキスト'
+
+export function addTextAt(
+  floorPlan: FloorPlan,
+  floorId: string,
+  position: Point,
+  options?: { text?: string; fontSize?: number }
+): { floorPlan: FloorPlan; textId: string } | { error: string } {
+  const floor = floorPlan.floors.find((f) => f.id === floorId)
+  if (!floor) return { error: '階が見つかりません。' }
+
+  const c = snapPoint(position)
+  const textId = uid('text')
+  const label: TextLabel = {
+    id: textId,
+    text: (options?.text ?? DEFAULT_TEXT_LABEL).trim() || DEFAULT_TEXT_LABEL,
+    position: { x: round(c.x), y: round(c.y) },
+    ...(typeof options?.fontSize === 'number' ? { fontSize: options.fontSize } : {}),
+  }
+
+  const next = updateFloor(floorPlan, floorId, (f) => ({
+    ...f,
+    texts: [...(f.texts ?? []), label],
+  }))
+  return { floorPlan: next, textId }
 }
 
