@@ -502,10 +502,12 @@ function App() {
                 onOverlayOffsetChange={(offset) => setOverlay((prev) => ({ ...prev, offset }))}
                 onOverlayCalibrationStep={setCalibrationStep}
                 onOverlayCalibrated={({ scaleX, scaleY, offset }) => {
+                  // 縦横比維持: 万一ずれていても共通の縮尺に揃える
+                  const scale = (scaleX + scaleY) / 2
                   setOverlay((prev) => ({
                     ...prev,
-                    scaleX,
-                    scaleY,
+                    scaleX: scale,
+                    scaleY: scale,
                     offset,
                     calibrating: false,
                   }))
