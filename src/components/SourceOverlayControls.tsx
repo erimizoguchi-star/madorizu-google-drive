@@ -3,9 +3,9 @@ export interface SourceOverlayState {
   enabled: boolean
   /** 0〜1 */
   opacity: number
-  /** 横方向の倍率（1 = 元のサイズ） */
+  /** 横方向の倍率（1 = 元のサイズ）。縦横比維持のため通常は scaleY と同じ */
   scaleX: number
-  /** 縦方向の倍率。横と別々に持つことで、図面と間取図の縦横比のズレを吸収する */
+  /** 縦方向の倍率。縮尺操作では scaleX と同じ値を保つ */
   scaleY: number
   /** 位置のずらし量（間取図と同じ座標系） */
   offset: { x: number; y: number }
@@ -40,7 +40,8 @@ export function SourceOverlayControls({
   onChange,
 }: SourceOverlayControlsProps) {
   const patch = (p: Partial<SourceOverlayState>) => onChange({ ...state, ...p })
-  const ratio = state.scaleX > 0 ? state.scaleY / state.scaleX : 1
+  // 縦横比維持のため、表示・操作は共通の縮尺（横基準）を使う
+  const scale = state.scaleX > 0 ? state.scaleX : 1
 
   return (
     <div className="overlay-controls">
@@ -72,31 +73,21 @@ export function SourceOverlayControls({
           </div>
 
           <div className="overlay-field">
-            <label htmlFor="overlay-scale-x">横</label>
+            <label htmlFor="overlay-scale">縮尺</label>
             <input
-              id="overlay-scale-x"
+              id="overlay-scale"
               type="range"
               min={20}
               max={300}
               step={1}
-              value={Math.round(state.scaleX * 100)}
-              onChange={(e) => patch({ scaleX: Number(e.target.value) / 100 })}
+              value={Math.round(scale * 100)}
+              onChange={(e) => {
+                const next = Number(e.target.value) / 100
+                // 縦横同じ倍率にしてアスペクト比を維持
+                patch({ scaleX: next, scaleY: next })
+              }}
             />
-            <span className="overlay-value">{Math.round(state.scaleX * 100)}%</span>
-          </div>
-
-          <div className="overlay-field">
-            <label htmlFor="overlay-scale-y">縦</label>
-            <input
-              id="overlay-scale-y"
-              type="range"
-              min={20}
-              max={300}
-              step={1}
-              value={Math.round(state.scaleY * 100)}
-              onChange={(e) => patch({ scaleY: Number(e.target.value) / 100 })}
-            />
-            <span className="overlay-value">{Math.round(state.scaleY * 100)}%</span>
+            <span className="overlay-value">{Math.round(scale * 100)}%</span>
           </div>
 
           <button
@@ -144,17 +135,15 @@ export function SourceOverlayControls({
               ) : (
                 <>
                   <strong>② 続いて「右下の角」をクリック</strong>
-                  してください。2点から縦横の倍率と位置を自動で合わせます
+                  してください。2点から縮尺（縦横比維持）と位置を自動で合わせます
                 </>
               )
             ) : state.adjusting ? (
               '平面図をドラッグして動かしてください（この間は間取図の編集は止まります）'
             ) : (
               <>
-                重ねているのは「{fileName}」です。出力（PNG / SVG / PDF）には含まれません。
-                {Math.abs(ratio - 1) > 0.02 && (
-                  <> 現在の縦横比は横を 1 としたとき縦 {ratio.toFixed(2)} です。</>
-                )}
+                重ねているのは「{fileName}」です。縮尺は縦横比を保ったまま変更できます。出力（PNG /
+                SVG / PDF）には含まれません。
               </>
             )}
           </p>

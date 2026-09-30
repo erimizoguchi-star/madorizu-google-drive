@@ -188,6 +188,12 @@ export function FloorPlanView({
 
     const kx = (plan.p2.x - plan.p1.x) / dx
     const ky = (plan.p2.y - plan.p1.y) / dy
+    // 縦横比を維持するため、縦横から求めた倍率の平均を共通縮尺にする
+    const k = (Math.abs(kx) + Math.abs(ky)) / 2
+    if (!(k > 0) || !Number.isFinite(k)) {
+      setCalibFirst(null)
+      return
+    }
 
     // 拡大は画像の中心を基準に掛かるので、中心からの距離を倍率で伸ばした先を求める
     const img = container.querySelector('.source-overlay-image') as HTMLImageElement | null
@@ -198,13 +204,15 @@ export function FloorPlanView({
     const imgRect = img.getBoundingClientRect()
     const origin = { x: imgRect.left + imgRect.width / 2, y: imgRect.top + imgRect.height / 2 }
     const movedC1 = {
-      x: origin.x + (c1.x - origin.x) * kx,
-      y: origin.y + (c1.y - origin.y) * ky,
+      x: origin.x + (c1.x - origin.x) * k,
+      y: origin.y + (c1.y - origin.y) * k,
     }
 
+    const baseScale = (overlay.scaleX + overlay.scaleY) / 2
+    const nextScale = baseScale * k
     onOverlayCalibrated({
-      scaleX: overlay.scaleX * kx,
-      scaleY: overlay.scaleY * ky,
+      scaleX: nextScale,
+      scaleY: nextScale,
       offset: {
         x: overlay.offset.x + (plan.p1.x - movedC1.x) / zoom,
         y: overlay.offset.y + (plan.p1.y - movedC1.y) / zoom,
