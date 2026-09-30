@@ -53,6 +53,8 @@ export default defineConfig(({ mode }) => {
     },
     preview: {
       host: '127.0.0.1',
+      // Vite は既定で localhost 以外のホスト名を拒否する。Cloudflare Tunnel 経由の公開名を許可する
+      allowedHosts: ['madori.n-kyouei-system.com'],
       port: 5173,
       strictPort: true,
       // 社内サーバー PC では起動のたびにブラウザが開かないようにする（dev は開く）
