@@ -55,7 +55,8 @@ export default defineConfig(({ mode }) => {
       host: '127.0.0.1',
       port: 5173,
       strictPort: true,
-      open: true,
+      // 社内サーバー PC では起動のたびにブラウザが開かないようにする（dev は開く）
+      open: false,
       proxy: {
         '/api/gemini': geminiProxy,
       },
