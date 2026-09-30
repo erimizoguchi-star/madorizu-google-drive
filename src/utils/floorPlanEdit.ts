@@ -136,7 +136,7 @@ export function updateTextLabel(
       ...floor,
       texts: texts.map((label, i) => {
         if (i !== found.textIndex) return label
-        let updated = { ...label }
+        const updated = { ...label }
         if (typeof patch.text === 'string') {
           const trimmed = patch.text.trim()
           updated.text = trimmed.length > 0 ? trimmed : label.text
