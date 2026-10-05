@@ -45,9 +45,12 @@ import {
   setWallEndpoints,
   setWindowEndpoints,
 } from './utils/floorPlanDrag'
+import { fileSafeName, propertyLinkFromUrl } from './utils/propertyLink'
 import './App.css'
 
 function App() {
+  // 物件情報管理システムから開かれた場合の物件情報（URL の ?property= / name=）
+  const [propertyLink] = useState(() => propertyLinkFromUrl())
   const {
     floorPlan,
     canUndo,
@@ -270,6 +273,15 @@ function App() {
           <h1>間取図ジェネレーター</h1>
           <p className="tagline">平面図から、カラー間取図を自動生成</p>
         </div>
+        {propertyLink && (
+          <div className="property-link">
+            <span className="property-link__label">物件</span>
+            <strong className="property-link__name">{propertyLink.name}</strong>
+            <span className="property-link__hint">
+              物件情報管理システムから開きました。できあがった画像は、広告シートの「間取り図」の枠に入れてください。
+            </span>
+          </div>
+        )}
       </header>
 
       <main className="app-main">
@@ -403,7 +415,7 @@ function App() {
               />
               <ExportButton
                 targetId="madorizu-export"
-                filename="madorizu"
+                filename={propertyLink ? `間取り図_${fileSafeName(propertyLink.name)}` : 'madorizu'}
                 onBeforeExport={() => {
                   // 選択枠・編集ハンドルが画像に写り込まないよう解除してから出力する
                   setSelected(null)

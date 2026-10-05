@@ -1640,3 +1640,30 @@
     min-height: auto;
   }
 }
+
+/* 物件情報管理システムから開かれたときの物件表示 */
+.property-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+  margin-top: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  border-left: 4px solid #0284c7;
+  border-radius: 6px;
+  background: rgba(2, 132, 199, 0.12);
+  font-size: 0.75rem;
+}
+
+.property-link__label {
+  opacity: 0.7;
+}
+
+.property-link__name {
+  font-size: 0.875rem;
+}
+
+.property-link__hint {
+  opacity: 0.8;
+}
+
