@@ -1690,3 +1690,34 @@
   opacity: 1;
 }
 
+/* 物件情報管理システムの図面の一覧 */
+.property-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  padding: 0.6rem;
+  border-left: 4px solid #0284c7;
+  border-radius: 6px;
+  background: rgba(2, 132, 199, 0.08);
+}
+
+.property-sources__title {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.property-sources__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  word-break: break-all;
+}
+
+.property-sources__label {
+  font-size: 0.6875rem;
+  opacity: 0.7;
+}
+

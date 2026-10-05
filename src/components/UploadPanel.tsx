@@ -8,6 +8,7 @@ import {
   type PreparedFloorPlanInput,
 } from '../services/pdfToImage'
 import type { AnalysisResult } from '../types/floorPlan'
+import type { PropertySource } from '../utils/propertyLink'
 
 const STORAGE_KEY = 'madorizu-gemini-api-key'
 
@@ -16,9 +17,14 @@ interface UploadPanelProps {
   onSourceReady: (source: { previewUrl: string; fileName: string }) => void
   onError: (message: string) => void
   disabled?: boolean
+  /**
+   * 物件情報管理システムにある、この物件の図面。指定があると一覧を出し、選ぶとアップロードと同じように読み込む。
+   */
+  propertySources?: { sources: PropertySource[]; load: (source: PropertySource) => Promise<File> }
 }
 
-export function UploadPanel({ onResult, onSourceReady, onError, disabled }: UploadPanelProps) {
+export function UploadPanel({ onResult, onSourceReady, onError, disabled, propertySources }: UploadPanelProps) {
+  const [loadingSourceId, setLoadingSourceId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const previewUrlRef = useRef<string | null>(null)
   const [dragging, setDragging] = useState(false)
@@ -150,6 +156,23 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
       void loadInput(file, 1)
     },
     [loadInput]
+  )
+
+  /** 物件情報管理システムの図面を読み込む */
+  const handlePropertySource = useCallback(
+    async (source: PropertySource) => {
+      if (!propertySources) return
+      setLoadingSourceId(source.id)
+      onError('')
+      try {
+        handleFile(await propertySources.load(source))
+      } catch (e) {
+        onError(e instanceof Error ? e.message : '図面を読み込めませんでした')
+      } finally {
+        setLoadingSourceId(null)
+      }
+    },
+    [propertySources, handleFile, onError]
   )
 
   const handlePageChange = useCallback(
@@ -308,6 +331,25 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled }: Uplo
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {propertySources && propertySources.sources.length > 0 && (
+        <div className="property-sources">
+          <p className="property-sources__title">物件情報管理システムの図面</p>
+          {propertySources.sources.map((source) => (
+            <button
+              key={source.id}
+              type="button"
+              className="btn btn-secondary property-sources__item"
+              disabled={disabled || busy || loadingSourceId !== null}
+              onClick={() => void handlePropertySource(source)}
+              title={`${source.label}から読み込みます`}
+            >
+              {loadingSourceId === source.id ? '読み込み中…' : source.name}
+              <span className="property-sources__label">{source.label}</span>
+            </button>
+          ))}
         </div>
       )}
 

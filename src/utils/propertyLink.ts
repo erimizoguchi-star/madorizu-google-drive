@@ -35,6 +35,42 @@ export function propertyLinkFromUrl(search: string = window.location.search): Pr
   return { propertyId, name: name || propertyId, uploadUrl: parseUploadUrl(params.get('upload')) }
 }
 
+/** 物件情報管理システムにある、この物件の図面（資料シートの建物図面や、間取り図の枠に入れた図面の写真） */
+export interface PropertySource {
+  id: string
+  name: string
+  /** どこにある資料か（例: 資料シートの建物図面） */
+  label: string
+  kind: 'image' | 'pdf'
+}
+
+/** この物件の図面の一覧を取得する。取得できなければ空 */
+export async function fetchPropertySources(uploadUrl: string): Promise<PropertySource[]> {
+  try {
+    const response = await fetch(uploadUrl)
+    if (!response.ok) return []
+    const data = (await response.json()) as { sources?: PropertySource[] }
+    return Array.isArray(data.sources) ? data.sources : []
+  } catch {
+    return []
+  }
+}
+
+/** 図面を1つ読み込み、アップロードしたファイルと同じ形（File）にする */
+export async function fetchPropertySourceFile(uploadUrl: string, source: PropertySource): Promise<File> {
+  const url = new URL(uploadUrl)
+  url.searchParams.set('file', source.id)
+  const response = await fetch(url)
+  if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(data?.error ?? `図面を読み込めませんでした（${response.status}）`)
+  }
+  const blob = await response.blob()
+  const isPdf = blob.type === 'application/pdf'
+  const base = source.name.replace(/\.[^.]+$/, '') || '図面'
+  return new File([blob], `${base}${isPdf ? '.pdf' : '.jpg'}`, { type: isPdf ? 'application/pdf' : 'image/jpeg' })
+}
+
 /** 送り先（受付票）をアドレスバーから消す。URL を人に渡したときに紛れ込ませないため */
 export function removeUploadFromAddressBar() {
   const url = new URL(window.location.href)

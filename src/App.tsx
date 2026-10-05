@@ -45,7 +45,14 @@ import {
   setWallEndpoints,
   setWindowEndpoints,
 } from './utils/floorPlanDrag'
-import { fileSafeName, propertyLinkFromUrl, removeUploadFromAddressBar } from './utils/propertyLink'
+import {
+  fetchPropertySourceFile,
+  fetchPropertySources,
+  fileSafeName,
+  propertyLinkFromUrl,
+  removeUploadFromAddressBar,
+  type PropertySource,
+} from './utils/propertyLink'
 import './App.css'
 
 function App() {
@@ -54,6 +61,19 @@ function App() {
   useEffect(() => {
     removeUploadFromAddressBar()
   }, [])
+  // 物件情報管理システムにある、この物件の図面（建物図面や図面の写真）の一覧
+  const [propertySources, setPropertySources] = useState<PropertySource[]>([])
+  const uploadUrl = propertyLink?.uploadUrl ?? null
+  useEffect(() => {
+    if (!uploadUrl) return
+    let cancelled = false
+    void fetchPropertySources(uploadUrl).then((sources) => {
+      if (!cancelled) setPropertySources(sources)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [uploadUrl])
   const {
     floorPlan,
     canUndo,
@@ -301,6 +321,11 @@ function App() {
             onError={(msg) => {
               setError(msg || null)
             }}
+            propertySources={
+              uploadUrl
+                ? { sources: propertySources, load: (source) => fetchPropertySourceFile(uploadUrl, source) }
+                : undefined
+            }
           />
 
           {error && <div className="error-banner">{error}</div>}
