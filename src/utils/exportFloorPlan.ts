@@ -136,6 +136,22 @@ export async function exportFloorPlanJpeg(targetId: string, filename: string) {
   )
 }
 
+/**
+ * 間取図を JPEG の Blob にする（ダウンロードせず、他のシステムへ送るとき用）。
+ * 送り先の上限に収まるよう、大きすぎるときは画質を下げる。
+ */
+export async function renderFloorPlanJpegBlob(targetId: string, maxBytes = 3_500_000): Promise<Blob | null> {
+  const canvas = await renderFloorPlanCanvas(targetId)
+  if (!canvas) return null
+  const toBlob = (quality: number) =>
+    new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+  for (const quality of [0.92, 0.8, 0.65]) {
+    const blob = await toBlob(quality)
+    if (blob && blob.size <= maxBytes) return blob
+  }
+  return toBlob(0.5)
+}
+
 export async function exportFloorPlanPdf(targetId: string, filename: string) {
   const canvas = await renderFloorPlanCanvas(targetId)
   if (!canvas) return

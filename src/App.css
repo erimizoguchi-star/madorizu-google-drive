@@ -1667,3 +1667,26 @@
   opacity: 0.8;
 }
 
+/* 物件情報管理システムへ送る */
+.export-send {
+  flex-basis: 100%;
+  margin-top: 0.5rem;
+}
+
+.export-send__note {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.export-send__note.is-ok {
+  color: #047857;
+  font-weight: 600;
+  opacity: 1;
+}
+
+.export-send__note.is-error {
+  color: #b91c1c;
+  opacity: 1;
+}
+

@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import {
   exportFloorPlanJpeg,
   exportFloorPlanPdf,
   exportFloorPlanPng,
   exportFloorPlanSvg,
+  renderFloorPlanJpegBlob,
 } from '../utils/exportFloorPlan'
+import { sendImageToPropertySystem } from '../utils/propertyLink'
 
 interface ExportButtonProps {
   targetId: string
@@ -13,6 +16,11 @@ interface ExportButtonProps {
    * 解除しないと、選択ハイライトや編集ハンドルがそのまま画像に写り込む。
    */
   onBeforeExport?: () => void
+  /**
+   * 物件情報管理システムから開かれたときの送り先。指定があると「物件情報管理システムへ送る」ボタンを出す。
+   * 送ると、その物件の広告シート（間取り図の枠）に直接入る。
+   */
+  sendTo?: { uploadUrl: string; propertyName: string }
 }
 
 /** React の再描画（選択解除の反映）を待ってから出力する */
@@ -22,11 +30,27 @@ function afterRepaint(): Promise<void> {
   })
 }
 
-export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport }: ExportButtonProps) {
+export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport, sendTo }: ExportButtonProps) {
+  const [sendState, setSendState] = useState<{ busy: boolean; ok?: boolean; message?: string }>({ busy: false })
+
   const run = async (exporter: () => void | Promise<void>) => {
     onBeforeExport?.()
     await afterRepaint()
     await exporter()
+  }
+
+  const send = async () => {
+    if (!sendTo || sendState.busy) return
+    setSendState({ busy: true })
+    onBeforeExport?.()
+    await afterRepaint()
+    const blob = await renderFloorPlanJpegBlob(targetId)
+    if (!blob) {
+      setSendState({ busy: false, ok: false, message: '間取図の画像を作れませんでした。' })
+      return
+    }
+    const result = await sendImageToPropertySystem(sendTo.uploadUrl, blob, `${filename}.jpg`)
+    setSendState({ busy: false, ...result })
   }
 
   return (
@@ -59,6 +83,16 @@ export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport }
       >
         PDF
       </button>
+      {sendTo && (
+        <div className="export-send">
+          <button type="button" onClick={() => void send()} disabled={sendState.busy} className="btn btn-primary">
+            {sendState.busy ? '送信中…' : '物件情報管理システムへ送る'}
+          </button>
+          <p className={`export-send__note${sendState.message ? (sendState.ok ? ' is-ok' : ' is-error') : ''}`}>
+            {sendState.message ?? `「${sendTo.propertyName}」の広告シート（間取り図の枠）に直接入ります。`}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

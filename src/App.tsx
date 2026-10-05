@@ -45,12 +45,15 @@ import {
   setWallEndpoints,
   setWindowEndpoints,
 } from './utils/floorPlanDrag'
-import { fileSafeName, propertyLinkFromUrl } from './utils/propertyLink'
+import { fileSafeName, propertyLinkFromUrl, removeUploadFromAddressBar } from './utils/propertyLink'
 import './App.css'
 
 function App() {
   // 物件情報管理システムから開かれた場合の物件情報（URL の ?property= / name=）
   const [propertyLink] = useState(() => propertyLinkFromUrl())
+  useEffect(() => {
+    removeUploadFromAddressBar()
+  }, [])
   const {
     floorPlan,
     canUndo,
@@ -278,7 +281,10 @@ function App() {
             <span className="property-link__label">物件</span>
             <strong className="property-link__name">{propertyLink.name}</strong>
             <span className="property-link__hint">
-              物件情報管理システムから開きました。できあがった画像は、広告シートの「間取り図」の枠に入れてください。
+              物件情報管理システムから開きました。
+              {propertyLink.uploadUrl
+                ? '仕上げたら、書き出しの「物件情報管理システムへ送る」を押すと、広告シートの「間取り図」の枠に入ります。'
+                : 'できあがった画像は、広告シートの「間取り図」の枠に入れてください。'}
             </span>
           </div>
         )}
@@ -416,6 +422,11 @@ function App() {
               <ExportButton
                 targetId="madorizu-export"
                 filename={propertyLink ? `間取り図_${fileSafeName(propertyLink.name)}` : 'madorizu'}
+                sendTo={
+                  propertyLink?.uploadUrl
+                    ? { uploadUrl: propertyLink.uploadUrl, propertyName: propertyLink.name }
+                    : undefined
+                }
                 onBeforeExport={() => {
                   // 選択枠・編集ハンドルが画像に写り込まないよう解除してから出力する
                   setSelected(null)
