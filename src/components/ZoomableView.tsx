@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { ZoomContext } from './zoomContext'
 
 const ZOOM_MIN = 0.2
 const ZOOM_MAX = 5
@@ -305,7 +306,7 @@ export function ZoomableView({
             ['--zoom' as string]: zoom,
           }}
         >
-          {children}
+          <ZoomContext.Provider value={zoom}>{children}</ZoomContext.Provider>
         </div>
       </div>
     </div>

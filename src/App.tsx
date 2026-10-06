@@ -3,6 +3,7 @@ import { ExportButton } from './components/ExportButton'
 import { FloorsPanel } from './components/FloorsPanel'
 import { JsonDataButtons } from './components/JsonDataButtons'
 import { RoomEditor } from './components/RoomEditor'
+import { SelectionToolbar } from './components/SelectionToolbar'
 import { SavedPlansPanel } from './components/SavedPlansPanel'
 import {
   DEFAULT_SOURCE_OVERLAY,
@@ -17,14 +18,17 @@ import { useFloorPlanHistory } from './hooks/useFloorPlanHistory'
 import type { AnalysisResult, FloorPlan, Point } from './types/floorPlan'
 import type { SelectedElementRef, SelectOptions } from './utils/floorPlanEdit'
 import {
+  cycleDoorOrientation,
   deleteSelectedElement,
   describeSelection,
+  findWindow,
   isDeletableSelection,
   isTypingInEditableField,
   resizeRoomEdge,
   setRoomPolygon,
   setStairPolygon,
   updateLabelOffset,
+  updateWindow,
 } from './utils/floorPlanEdit'
 import {
   addDoorAt,
@@ -311,6 +315,20 @@ function App() {
       }
 
       if (!selected) return
+      // R: 選んだ扉の向きを次へ／窓の開く向きを反対へ（その場メニューの「向き」と同じ）
+      if (e.key.toLowerCase() === 'r' && !mod && !e.altKey && !isTypingInEditableField(e.target)) {
+        if (selected.kind === 'door') {
+          e.preventDefault()
+          commit((prev) => cycleDoorOrientation(prev, selected))
+        } else if (selected.kind === 'window') {
+          e.preventDefault()
+          commit((prev) => {
+            const win = findWindow(prev, selected)?.window
+            return win ? updateWindow(prev, selected, { outward: win.outward === -1 ? 1 : -1 }) : prev
+          })
+        }
+        return
+      }
       if (e.key !== 'Delete' && e.key !== 'Backspace') return
       if (isTypingInEditableField(e.target)) return
       if (!isDeletableSelection(selected)) return
@@ -693,6 +711,16 @@ function App() {
                   }))
                 }}
                 aligning={aligning}
+                selectionToolbar={
+                  editMode && selected && !aligning ? (
+                    <SelectionToolbar
+                      floorPlan={floorPlan}
+                      selected={selected}
+                      onChange={(updater) => commit(updater)}
+                      onDelete={deleteSelection}
+                    />
+                  ) : undefined
+                }
                 onGridLineMove={(floorId, axis, from, to, phase) => {
                   if (phase === 'start') {
                     gridDragBaseRef.current = floorPlan

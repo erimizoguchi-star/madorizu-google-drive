@@ -300,11 +300,15 @@ export function snapDoorOntoNearestWall(
   if (!snap) return null
   const half = door.width / 2
   const center = clampCenterOnSegment(snap.start, snap.end, snap.projected, half)
-  const hinge = doorHingeFromCenter(center, snap.angle, door.width)
+  // 扉が壁と逆向きなら逆向きのまま載せる。壁の向きにそろえると、丁番が開口の反対の端へ戻り、
+  // 「丁番の位置を反対側へ」や、向きを直したあとのドラッグで向きが元に戻ってしまう
+  const turn = Math.abs(((((door.angle - snap.angle) % 360) + 540) % 360) - 180)
+  const angle = turn > 90 ? (snap.angle + 180) % 360 : snap.angle
+  const hinge = doorHingeFromCenter(center, angle, door.width)
   return {
     ...door,
     position: { x: round(hinge.x), y: round(hinge.y) },
-    angle: snap.angle,
+    angle,
     width: door.width,
   }
 }

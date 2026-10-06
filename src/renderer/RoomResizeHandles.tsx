@@ -1,10 +1,12 @@
 import { useRef } from 'react'
 import type { RectEdge, AxisAlignedRect } from '../utils/roomGeometry'
 import { SELECTION } from './styles'
+import { useZoom } from '../components/zoomContext'
 import { clientToSvg } from './svgCoords'
 
-const HANDLE_LENGTH = 28
-const HANDLE_THICKNESS = 8
+/** 取っ手の大きさ（画面上の px）。縮小表示でも掴めるよう、拡大率で割って図面の単位にする */
+const HANDLE_LENGTH_PX = 28
+const HANDLE_THICKNESS_PX = 9
 
 interface RoomResizeHandlesProps {
   rect: AxisAlignedRect
@@ -19,6 +21,9 @@ export function RoomResizeHandles({ rect, floorOffset, onResize }: RoomResizeHan
     pointerId: number
     svg: SVGSVGElement
   } | null>(null)
+  const zoom = useZoom()
+  const HANDLE_LENGTH = HANDLE_LENGTH_PX / zoom
+  const HANDLE_THICKNESS = HANDLE_THICKNESS_PX / zoom
 
   const { minX, minY, maxX, maxY } = rect
   const midX = (minX + maxX) / 2
@@ -114,10 +119,10 @@ export function RoomResizeHandles({ rect, floorOffset, onResize }: RoomResizeHan
           y={handle.y}
           width={handle.w}
           height={handle.h}
-          rx={2}
+          rx={2 / zoom}
           fill={SELECTION.stroke}
           stroke="#fff"
-          strokeWidth={1}
+          strokeWidth={1 / zoom}
           style={{ cursor: handle.cursor }}
           onPointerDown={(e) => startDrag(handle.edge, e)}
         />

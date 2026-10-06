@@ -580,6 +580,23 @@ export function updateFixture(
   return { ...floorPlan, floors }
 }
 
+/**
+ * 扉の向きを次へ切り替える。押すたびに「吊元（どちらの端）× 開く側」の4通りを順に回る。
+ * 戸の向き・開閉の向き・丁番の3つを考えて選ばなくても、図面と同じ形になるまで押せば済む。
+ *   (端A, 左側) → (端A, 右側) → (端B, 右側) → (端B, 左側) → 最初へ
+ */
+export function cycleDoorOrientation(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; doorId: string }
+): FloorPlan {
+  const found = findDoor(floorPlan, ref)
+  if (!found) return floorPlan
+  // 開く側だけを反対へ。すでに反対なら、丁番を反対の端へ（開く側はそのまま）
+  return found.door.swing === 1
+    ? updateDoor(floorPlan, ref, { swing: -1 })
+    : updateDoor(floorPlan, ref, { flipHinge: true })
+}
+
 export function updateWindow(
   floorPlan: FloorPlan,
   ref: { floorId: string; windowId: string },

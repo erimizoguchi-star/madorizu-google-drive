@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import type { Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
@@ -19,6 +19,7 @@ import { WallEditHandles } from './WallEditHandles'
 import { WindowEditHandles } from './WindowEditHandles'
 import { FixtureEditHandles } from './FixtureEditHandles'
 import { GridLinesLayer, type GridLineDragHandler } from './GridLinesLayer'
+import { SelectionToolbarAnchor } from './SelectionToolbarAnchor'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
 import { clientToSvg, canvasToFloor, isSvgDragging, subscribeSvgDrag } from './svgCoords'
@@ -62,6 +63,8 @@ interface FloorCanvasProps {
   onPlaceClick?: (positionFloor: Point) => void
   /** 「線を合わせる」のとき、通りをドラッグしたとき */
   onGridLineDrag?: GridLineDragHandler
+  /** 選んだ扉・窓の上に出すメニュー（この階の要素が選ばれているときだけ渡される） */
+  selectionToolbar?: ReactNode
 }
 
 function getBounds(floor: Floor) {
@@ -136,6 +139,7 @@ export function FloorCanvas({
   wallDraftStart,
   onPlaceClick,
   onGridLineDrag,
+  selectionToolbar,
 }: FloorCanvasProps) {
   // ドラッグ中に描画範囲が変わると図面が伸縮し、掴んだ要素がカーソルから離れてしまう。
   // ドラッグしている間は範囲を固定し、離した時点で新しい範囲に合わせ直す。
@@ -219,286 +223,312 @@ export function FloorCanvas({
       ? transformedFloor.fixtures.find((f) => f.id === selectedFixtureId)
       : undefined
 
+  // その場メニューを置く位置（選んだ扉・窓の上端の中央）
+  const toolbarPoints: Point[] = !selectionToolbar
+    ? []
+    : selectedDoorId != null
+      ? (() => {
+          const door = transformedFloor.doors.find((d) => d.id === selectedDoorId)
+          return door ? doorPaintExtentPoints(door) : []
+        })()
+      : selectedWindow
+        ? [selectedWindow.start, selectedWindow.end]
+        : []
+  const toolbarAnchor =
+    toolbarPoints.length > 0
+      ? {
+          x: (Math.min(...toolbarPoints.map((p) => p.x)) + Math.max(...toolbarPoints.map((p) => p.x))) / 2,
+          y: Math.min(...toolbarPoints.map((p) => p.y)),
+        }
+      : null
+
   return (
     <div className="floor-canvas-wrapper">
       <div className="floor-label">{floor.label}</div>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        // 実寸（1単位=1px）で描く。width を省くと SVG 既定の 300px 幅になって図面が小さく出るうえ、
-        // 階ごとに縮尺が揃わない。画面上の拡大縮小は ZoomableView が受け持つ。
-        width={width}
-        height={height}
-        // 出力（PNG / PDF など）で、階が複数あるとき各階の下に階名を描くために使う
-        data-floor-label={floor.label}
-        data-building-corner={buildingCorner}
-        // 間取図の座標 (0,0) が SVG のどこに来るか。描画範囲が変わると動くので、重ねた平面図を追従させるのに使う
-        data-origin={`${offsetX},${offsetY}`}
-        data-floor-id={floor.id}
-        className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <rect
-          x={0}
-          y={0}
+      <div className="floor-canvas-stage">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          // 実寸（1単位=1px）で描く。width を省くと SVG 既定の 300px 幅になって図面が小さく出るうえ、
+          // 階ごとに縮尺が揃わない。画面上の拡大縮小は ZoomableView が受け持つ。
           width={width}
           height={height}
-          fill={CANVAS.background}
-        />
-        <g className="rooms-layer">
-          {transformedFloor.rooms.map((room) => (
-            <RoomRenderer
-              key={room.id}
-              room={room}
-              clipScope={floor.id}
-              floorOffset={floorOffset}
-              selectable={!!onRoomSelect}
-              editable={editable}
-              renderLabels={false}
-              selected={selectedRoomId === room.id}
-              mergeSelected={mergeRoomIds?.includes(room.id) ?? false}
-              onSelect={onRoomSelect}
-              onMove={
-                onRoomMove && editable
-                  ? (roomId, polygonFloor) => onRoomMove(roomId, polygonFloor)
-                  : undefined
-              }
-            />
-          ))}
-        </g>
-        <g className="stairs-layer">
-          {transformedFloor.stairs.map((stair) => (
-            <StairRenderer
-              key={stair.id}
-              stair={stair}
-              clipScope={floor.id}
-              selectable={!!onStairSelect}
-              editable={editable}
-              renderLabels={false}
-              selected={selectedStairId === stair.id}
-              floorOffset={floorOffset}
-              onSelect={onStairSelect}
-              onMove={onStairMove ? (id, polygon) => onStairMove(id, polygon) : undefined}
-            />
-          ))}
-        </g>
-        <g className="fixtures-layer">
-          {transformedFloor.fixtures.map((fixture) => (
-            <g key={fixture.id} data-fixture-id={fixture.id}>
-              <FixtureRenderer fixture={fixture} />
-              {onFixtureSelect && (
-                <rect
-                  x={fixture.position.x}
-                  y={fixture.position.y}
-                  width={fixture.width}
-                  height={fixture.height}
-                  // 記号が回転しているときはクリック判定も一緒に回す
-                  transform={
-                    fixture.angle
-                      ? `rotate(${fixture.angle} ${fixture.position.x + fixture.width / 2} ${
-                          fixture.position.y + fixture.height / 2
-                        })`
-                      : undefined
-                  }
-                  fill="transparent"
-                  className="fixture-hit"
-                  style={{ cursor: 'pointer' }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onFixtureSelect(fixture.id)
-                  }}
-                />
-              )}
-            </g>
-          ))}
-        </g>
-        <g className="walls-layer">
-          {transformedFloor.walls.map((wall) => (
-            <WallRenderer
-              key={wall.id}
-              wall={wall}
-              doors={transformedFloor.doors}
-              windows={transformedFloor.windows}
-              selectable={!!onWallSelect}
-              selected={selectedWallId === wall.id}
-              onSelect={onWallSelect}
-            />
-          ))}
-        </g>
-        <g className="windows-layer">
-          {transformedFloor.windows.map((win) => (
-            <WindowRenderer
-              key={win.id}
-              window={win}
-              selected={selectedWindowId === win.id}
-              selectable={!!onWindowSelect}
-              onSelect={onWindowSelect}
-            />
-          ))}
-        </g>
-        <g className="doors-layer">
-          {transformedFloor.doors.map((door) => (
-            <DoorRenderer
-              key={door.id}
-              door={door}
-              selected={selectedDoorId === door.id}
-              editable={editable}
-              floorOffset={floorOffset}
-              onSelect={onDoorSelect}
-              onMove={onDoorMove ? (pos) => onDoorMove(door.id, pos) : undefined}
-            />
-          ))}
-        </g>
-        <g className="labels-layer">
-          {transformedFloor.rooms.map((room) => {
-            const label = computeRoomLabelLayout(room)
-            if (!label) return null
-            return (
-              <RoomLabels
-                key={`label-${room.id}`}
-                layout={label}
-                editable={editable}
-                selected={selectedRoomId === room.id}
-                offsets={{
-                  name: room.nameLabelOffset,
-                  area: room.areaLabelOffset,
-                  note: room.noteLabelOffset,
-                }}
-                onSelect={() => onRoomSelect?.(room.id, false)}
-                onLabelOffsetChange={
-                  onRoomLabelOffsetChange
-                    ? (kind, offset) => onRoomLabelOffsetChange(room.id, kind, offset)
-                    : undefined
-                }
-              />
-            )
-          })}
-          {transformedFloor.stairs.map((stair) => {
-            const label = computeStairLabelLayout(stair)
-            if (!label) return null
-            return (
-              <RoomLabels
-                key={`label-${stair.id}`}
-                layout={label}
-                editable={editable}
-                selected={selectedStairId === stair.id}
-                offsets={{ name: stair.nameLabelOffset }}
-                draggableKinds={['name']}
-                onSelect={() => onStairSelect?.(stair.id)}
-                onLabelOffsetChange={
-                  onStairLabelOffsetChange
-                    ? (kind, offset) => onStairLabelOffsetChange(stair.id, kind, offset)
-                    : undefined
-                }
-              />
-            )
-          })}
-          {(transformedFloor.texts ?? []).map((textLabel) => (
-            <TextLabelRenderer
-              key={textLabel.id}
-              label={textLabel}
-              selected={selectedTextId === textLabel.id}
-              editable={editable}
-              floorOffset={floorOffset}
-              onSelect={onTextSelect}
-              onMove={onTextMove ? (pos) => onTextMove(textLabel.id, pos) : undefined}
-            />
-          ))}
-        </g>
-        {selectedRoomRectCanvas && onRoomResize && selectedRoomId && (
-          <g className="resize-handles-layer">
-            <RoomResizeHandles
-              rect={selectedRoomRectCanvas}
-              floorOffset={floorOffset}
-              onResize={(edge, positionFloorSvg) => onRoomResize(selectedRoomId, edge, positionFloorSvg)}
-            />
-          </g>
-        )}
-        {editable && selectedWall && onWallEndpointMove && onWallMove && (
-          <g className="edit-handles-layer">
-            <WallEditHandles
-              wall={selectedWall}
-              floorOffset={floorOffset}
-              onEndpointMove={(endpoint, pos) => onWallEndpointMove(selectedWall.id, endpoint, pos)}
-              onWallMove={(start, end) => onWallMove(selectedWall.id, start, end)}
-            />
-          </g>
-        )}
-        {editable && selectedWindow && onWindowEndpointMove && onWindowMove && (
-          <g className="edit-handles-layer">
-            <WindowEditHandles
-              window={selectedWindow}
-              floorOffset={floorOffset}
-              onEndpointMove={(endpoint, pos) => onWindowEndpointMove(selectedWindow.id, endpoint, pos)}
-              onWindowMove={(start, end) => onWindowMove(selectedWindow.id, start, end)}
-            />
-          </g>
-        )}
-        {editable && selectedFixture && onFixtureMove && (
-          <g className="edit-handles-layer">
-            <FixtureEditHandles
-              fixture={selectedFixture}
-              floorOffset={floorOffset}
-              onMove={(pos) => onFixtureMove(selectedFixture.id, pos)}
-              onResize={
-                onFixtureResize
-                  ? (corner, pos) => onFixtureResize(selectedFixture.id, corner, pos)
-                  : undefined
-              }
-            />
-          </g>
-        )}
-        {placeMode && onPlaceClick && (
+          // 出力（PNG / PDF など）で、階が複数あるとき各階の下に階名を描くために使う
+          data-floor-label={floor.label}
+          data-building-corner={buildingCorner}
+          // 間取図の座標 (0,0) が SVG のどこに来るか。描画範囲が変わると動くので、重ねた平面図を追従させるのに使う
+          data-origin={`${offsetX},${offsetY}`}
+          data-floor-id={floor.id}
+          className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
+          xmlns="http://www.w3.org/2000/svg"
+        >
           <rect
-            className="place-overlay"
-            data-no-pan=""
             x={0}
             y={0}
             width={width}
             height={height}
-            fill="transparent"
-            style={{ cursor: 'crosshair', pointerEvents: 'all' }}
-            onPointerDown={(e) => {
-              if (e.button !== 0) return
-              const svg = e.currentTarget.ownerSVGElement
-              if (!svg) return
-              const canvas = clientToSvg(svg, e.clientX, e.clientY)
-              if (!canvas) return
-              e.stopPropagation()
-              e.preventDefault()
-              onPlaceClick(canvasToFloor(canvas, floorOffset))
-            }}
+            fill={CANVAS.background}
           />
-        )}
-        {placeMode && wallDraftStart && (
-          // 壁追加の1点目。ここに印が出ないと、クリックが効いたか分からない
-          <g className="wall-draft-marker" pointerEvents="none">
-            <circle
-              cx={wallDraftStart.x + offsetX}
-              cy={wallDraftStart.y + offsetY}
-              r={7}
-              fill="none"
-              stroke="#C08A3E"
-              strokeWidth={2}
-            />
-            <circle
-              cx={wallDraftStart.x + offsetX}
-              cy={wallDraftStart.y + offsetY}
-              r={2.2}
-              fill="#C08A3E"
-            />
+          <g className="rooms-layer">
+            {transformedFloor.rooms.map((room) => (
+              <RoomRenderer
+                key={room.id}
+                room={room}
+                clipScope={floor.id}
+                floorOffset={floorOffset}
+                selectable={!!onRoomSelect}
+                editable={editable}
+                renderLabels={false}
+                selected={selectedRoomId === room.id}
+                mergeSelected={mergeRoomIds?.includes(room.id) ?? false}
+                onSelect={onRoomSelect}
+                onMove={
+                  onRoomMove && editable
+                    ? (roomId, polygonFloor) => onRoomMove(roomId, polygonFloor)
+                    : undefined
+                }
+              />
+            ))}
           </g>
+          <g className="stairs-layer">
+            {transformedFloor.stairs.map((stair) => (
+              <StairRenderer
+                key={stair.id}
+                stair={stair}
+                clipScope={floor.id}
+                selectable={!!onStairSelect}
+                editable={editable}
+                renderLabels={false}
+                selected={selectedStairId === stair.id}
+                floorOffset={floorOffset}
+                onSelect={onStairSelect}
+                onMove={onStairMove ? (id, polygon) => onStairMove(id, polygon) : undefined}
+              />
+            ))}
+          </g>
+          <g className="fixtures-layer">
+            {transformedFloor.fixtures.map((fixture) => (
+              <g key={fixture.id} data-fixture-id={fixture.id}>
+                <FixtureRenderer fixture={fixture} />
+                {onFixtureSelect && (
+                  <rect
+                    x={fixture.position.x}
+                    y={fixture.position.y}
+                    width={fixture.width}
+                    height={fixture.height}
+                    // 記号が回転しているときはクリック判定も一緒に回す
+                    transform={
+                      fixture.angle
+                        ? `rotate(${fixture.angle} ${fixture.position.x + fixture.width / 2} ${
+                            fixture.position.y + fixture.height / 2
+                          })`
+                        : undefined
+                    }
+                    fill="transparent"
+                    className="fixture-hit"
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onFixtureSelect(fixture.id)
+                    }}
+                  />
+                )}
+              </g>
+            ))}
+          </g>
+          <g className="walls-layer">
+            {transformedFloor.walls.map((wall) => (
+              <WallRenderer
+                key={wall.id}
+                wall={wall}
+                doors={transformedFloor.doors}
+                windows={transformedFloor.windows}
+                selectable={!!onWallSelect}
+                selected={selectedWallId === wall.id}
+                onSelect={onWallSelect}
+              />
+            ))}
+          </g>
+          <g className="windows-layer">
+            {transformedFloor.windows.map((win) => (
+              <WindowRenderer
+                key={win.id}
+                window={win}
+                selected={selectedWindowId === win.id}
+                selectable={!!onWindowSelect}
+                onSelect={onWindowSelect}
+              />
+            ))}
+          </g>
+          <g className="doors-layer">
+            {transformedFloor.doors.map((door) => (
+              <DoorRenderer
+                key={door.id}
+                door={door}
+                selected={selectedDoorId === door.id}
+                editable={editable}
+                floorOffset={floorOffset}
+                onSelect={onDoorSelect}
+                onMove={onDoorMove ? (pos) => onDoorMove(door.id, pos) : undefined}
+              />
+            ))}
+          </g>
+          <g className="labels-layer">
+            {transformedFloor.rooms.map((room) => {
+              const label = computeRoomLabelLayout(room)
+              if (!label) return null
+              return (
+                <RoomLabels
+                  key={`label-${room.id}`}
+                  layout={label}
+                  editable={editable}
+                  selected={selectedRoomId === room.id}
+                  offsets={{
+                    name: room.nameLabelOffset,
+                    area: room.areaLabelOffset,
+                    note: room.noteLabelOffset,
+                  }}
+                  onSelect={() => onRoomSelect?.(room.id, false)}
+                  onLabelOffsetChange={
+                    onRoomLabelOffsetChange
+                      ? (kind, offset) => onRoomLabelOffsetChange(room.id, kind, offset)
+                      : undefined
+                  }
+                />
+              )
+            })}
+            {transformedFloor.stairs.map((stair) => {
+              const label = computeStairLabelLayout(stair)
+              if (!label) return null
+              return (
+                <RoomLabels
+                  key={`label-${stair.id}`}
+                  layout={label}
+                  editable={editable}
+                  selected={selectedStairId === stair.id}
+                  offsets={{ name: stair.nameLabelOffset }}
+                  draggableKinds={['name']}
+                  onSelect={() => onStairSelect?.(stair.id)}
+                  onLabelOffsetChange={
+                    onStairLabelOffsetChange
+                      ? (kind, offset) => onStairLabelOffsetChange(stair.id, kind, offset)
+                      : undefined
+                  }
+                />
+              )
+            })}
+            {(transformedFloor.texts ?? []).map((textLabel) => (
+              <TextLabelRenderer
+                key={textLabel.id}
+                label={textLabel}
+                selected={selectedTextId === textLabel.id}
+                editable={editable}
+                floorOffset={floorOffset}
+                onSelect={onTextSelect}
+                onMove={onTextMove ? (pos) => onTextMove(textLabel.id, pos) : undefined}
+              />
+            ))}
+          </g>
+          {selectedRoomRectCanvas && onRoomResize && selectedRoomId && (
+            <g className="resize-handles-layer">
+              <RoomResizeHandles
+                rect={selectedRoomRectCanvas}
+                floorOffset={floorOffset}
+                onResize={(edge, positionFloorSvg) => onRoomResize(selectedRoomId, edge, positionFloorSvg)}
+              />
+            </g>
+          )}
+          {editable && selectedWall && onWallEndpointMove && onWallMove && (
+            <g className="edit-handles-layer">
+              <WallEditHandles
+                wall={selectedWall}
+                floorOffset={floorOffset}
+                onEndpointMove={(endpoint, pos) => onWallEndpointMove(selectedWall.id, endpoint, pos)}
+                onWallMove={(start, end) => onWallMove(selectedWall.id, start, end)}
+              />
+            </g>
+          )}
+          {editable && selectedWindow && onWindowEndpointMove && onWindowMove && (
+            <g className="edit-handles-layer">
+              <WindowEditHandles
+                window={selectedWindow}
+                floorOffset={floorOffset}
+                onEndpointMove={(endpoint, pos) => onWindowEndpointMove(selectedWindow.id, endpoint, pos)}
+                onWindowMove={(start, end) => onWindowMove(selectedWindow.id, start, end)}
+              />
+            </g>
+          )}
+          {editable && selectedFixture && onFixtureMove && (
+            <g className="edit-handles-layer">
+              <FixtureEditHandles
+                fixture={selectedFixture}
+                floorOffset={floorOffset}
+                onMove={(pos) => onFixtureMove(selectedFixture.id, pos)}
+                onResize={
+                  onFixtureResize
+                    ? (corner, pos) => onFixtureResize(selectedFixture.id, corner, pos)
+                    : undefined
+                }
+              />
+            </g>
+          )}
+          {placeMode && onPlaceClick && (
+            <rect
+              className="place-overlay"
+              data-no-pan=""
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="transparent"
+              style={{ cursor: 'crosshair', pointerEvents: 'all' }}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return
+                const svg = e.currentTarget.ownerSVGElement
+                if (!svg) return
+                const canvas = clientToSvg(svg, e.clientX, e.clientY)
+                if (!canvas) return
+                e.stopPropagation()
+                e.preventDefault()
+                onPlaceClick(canvasToFloor(canvas, floorOffset))
+              }}
+            />
+          )}
+          {placeMode && wallDraftStart && (
+            // 壁追加の1点目。ここに印が出ないと、クリックが効いたか分からない
+            <g className="wall-draft-marker" pointerEvents="none">
+              <circle
+                cx={wallDraftStart.x + offsetX}
+                cy={wallDraftStart.y + offsetY}
+                r={7}
+                fill="none"
+                stroke="#C08A3E"
+                strokeWidth={2}
+              />
+              <circle
+                cx={wallDraftStart.x + offsetX}
+                cy={wallDraftStart.y + offsetY}
+                r={2.2}
+                fill="#C08A3E"
+              />
+            </g>
+          )}
+          {onGridLineDrag && (
+            <GridLinesLayer
+              floor={floor}
+              floorOffset={floorOffset}
+              width={width}
+              height={height}
+              onDrag={onGridLineDrag}
+            />
+          )}
+          <NorthArrow x={width - 28} y={32} size={26} />
+        </svg>
+        {toolbarAnchor && selectionToolbar && (
+          <SelectionToolbarAnchor x={toolbarAnchor.x} y={toolbarAnchor.y}>
+            {selectionToolbar}
+          </SelectionToolbarAnchor>
         )}
-        {onGridLineDrag && (
-          <GridLinesLayer
-            floor={floor}
-            floorOffset={floorOffset}
-            width={width}
-            height={height}
-            onDrag={onGridLineDrag}
-          />
-        )}
-        <NorthArrow x={width - 28} y={32} size={26} />
-      </svg>
+      </div>
     </div>
   )
 }

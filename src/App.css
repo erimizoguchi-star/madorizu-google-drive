@@ -904,8 +904,33 @@
   pointer-events: auto;
 }
 
+/*
+ * 取っ手とクリック判定は、拡大率にかかわらず画面上で掴める大きさにする（--zoom は ZoomableView が渡す）。
+ * 図面の単位のままだと、全体を表示する縮小時（40% 前後）に直径 5px ほどになり掴めなかった。
+ * 拡大して見ているときは、元の図面の単位の大きさを下限にする。
+ */
 .edit-handle {
   cursor: grab;
+  r: max(6px, calc(7px / var(--zoom, 1)));
+  stroke-width: calc(1.5px / var(--zoom, 1));
+}
+
+.edit-handle-mid {
+  r: max(7px, calc(8px / var(--zoom, 1)));
+}
+
+.wall-hit-line,
+.window-hit-line {
+  stroke-width: max(16px, calc(14px / var(--zoom, 1)));
+}
+
+.door-hit-line {
+  stroke-width: max(18px, calc(16px / var(--zoom, 1)));
+}
+
+/* 扉の中央の丸は目印も兼ねるので、大きくしすぎない（縮小時に図面が丸だらけになる） */
+.door-hit {
+  r: max(10.5px, calc(5px / var(--zoom, 1)));
 }
 
 .edit-handle-mid {
@@ -1182,6 +1207,72 @@
 
 .overlay-stretch__actions .btn {
   flex: 0 0 auto;
+}
+
+.floor-canvas-stage {
+  position: relative;
+}
+
+.selection-toolbar-anchor {
+  position: absolute;
+  z-index: 10;
+  transform-origin: 50% 100%;
+  white-space: nowrap;
+}
+
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.selection-toolbar select,
+.selection-toolbar input {
+  font: inherit;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: #fff;
+}
+
+.selection-toolbar__width {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-text-muted);
+}
+
+.selection-toolbar__width input {
+  width: 4.5rem;
+}
+
+.selection-toolbar__btn {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.selection-toolbar__btn:hover {
+  background: var(--color-accent-soft);
+}
+
+.selection-toolbar__btn.is-danger {
+  border-color: #C9A89A;
+  color: #8B5A52;
+}
+
+.selection-toolbar__btn.is-danger:hover {
+  background: #F8F0EE;
 }
 
 .align-btn {
