@@ -59,8 +59,14 @@ export function UploadPanel({
     }
   }, [])
 
+  /** 利用者が自分でモードを選んだか。選んでいなければ、サーバーにキーがあるとき AI解析を既定にする */
+  const modeTouchedRef = useRef(false)
   useEffect(() => {
-    void fetchAppConfig().then((config) => setServerHasKey(config.hasServerApiKey))
+    void fetchAppConfig().then((config) => {
+      setServerHasKey(config.hasServerApiKey)
+      // 社内サーバーではキーが設定済みなので、毎回「サンプル表示」から切り替えなくて済むようにする
+      if (config.hasServerApiKey && !modeTouchedRef.current) setMode('gemini')
+    })
   }, [])
 
   useEffect(() => {
@@ -233,7 +239,10 @@ export function UploadPanel({
             name="mode"
             value="demo"
             checked={mode === 'demo'}
-            onChange={() => setMode('demo')}
+            onChange={() => {
+              modeTouchedRef.current = true
+              setMode('demo')
+            }}
           />
           サンプル表示（解析なし）
         </label>
@@ -243,7 +252,10 @@ export function UploadPanel({
             name="mode"
             value="gemini"
             checked={mode === 'gemini'}
-            onChange={() => setMode('gemini')}
+            onChange={() => {
+              modeTouchedRef.current = true
+              setMode('gemini')
+            }}
           />
           AI解析（Gemini）
         </label>
@@ -257,65 +269,60 @@ export function UploadPanel({
 
       {mode === 'gemini' && (
         <>
-          <div className="mode-notice ai-notice">
-            Google Gemini API で平面図を解析します。
-            {serverHasKey
-              ? ' .env にキーが設定されています。'
-              : ' .env ファイルに設定するか、下の欄に入力してください。'}
-          </div>
           {!serverHasKey && (
             <div className="mode-notice demo-notice">
               ⚠ .env に GEMINI_API_KEY が未設定です。下の入力欄にキーを入れるか、.env に設定してください。
             </div>
           )}
-          {serverHasKey && (
-            <div className="mode-notice ai-notice">
-              ✓ .env の Gemini API キーを使用できます（入力欄は空でOK）
-            </div>
-          )}
-          <div className="api-key-input">
-            <label htmlFor="api-key">Gemini API キー{serverHasKey ? '（.env 設定時は任意）' : ''}</label>
-            <input
-              id="api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e) => {
-                setApiKey(e.target.value)
-                setKeyStatus(null)
-              }}
-              placeholder={serverHasKey ? '空欄のままで .env のキーを使用' : 'AIza...'}
-            />
-            <div className="api-key-actions">
-              <button
-                type="button"
-                className="btn btn-secondary verify-key-btn"
-                disabled={!hasApiKey || verifyingKey || busy}
-                onClick={() => void handleVerifyKey()}
-              >
-                {verifyingKey ? '確認中...' : 'キーを確認'}
-              </button>
-              {apiKey && (
+          {/* サーバーにキーがあるときは入力欄を使わないので、たたんでおく */}
+          <details className="api-key-details" open={!serverHasKey}>
+            <summary>
+              {serverHasKey ? '✓ サーバーの API キーで解析します（キーの設定）' : 'Gemini API キーの設定'}
+            </summary>
+            <div className="api-key-input">
+              <label htmlFor="api-key">Gemini API キー{serverHasKey ? '（.env 設定時は任意）' : ''}</label>
+              <input
+                id="api-key"
+                type="password"
+                value={apiKey}
+                onChange={(e) => {
+                  setApiKey(e.target.value)
+                  setKeyStatus(null)
+                }}
+                placeholder={serverHasKey ? '空欄のままで .env のキーを使用' : 'AIza...'}
+              />
+              <div className="api-key-actions">
                 <button
                   type="button"
-                  className="btn btn-secondary clear-key-btn"
-                  disabled={busy}
-                  onClick={handleClearKey}
+                  className="btn btn-secondary verify-key-btn"
+                  disabled={!hasApiKey || verifyingKey || busy}
+                  onClick={() => void handleVerifyKey()}
                 >
-                  クリア
+                  {verifyingKey ? '確認中...' : 'キーを確認'}
                 </button>
+                {apiKey && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary clear-key-btn"
+                    disabled={busy}
+                    onClick={handleClearKey}
+                  >
+                    クリア
+                  </button>
+                )}
+              </div>
+              {keyStatus === 'success' && (
+                <p className="key-status success">APIキーは有効です</p>
               )}
             </div>
-            {keyStatus === 'success' && (
-              <p className="key-status success">APIキーは有効です</p>
-            )}
-          </div>
-          <details className="api-help">
-            <summary>APIキーの取得方法</summary>
-            <ol>
-              <li><a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> で API キーを作成</li>
-              <li>プロジェクト直下に <code>.env</code> を作成: <code>GEMINI_API_KEY=AIza...</code></li>
-              <li><code>npm run dev</code> を再起動</li>
-            </ol>
+            <details className="api-help">
+              <summary>APIキーの取得方法</summary>
+              <ol>
+                <li><a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> で API キーを作成</li>
+                <li>プロジェクト直下に <code>.env</code> を作成: <code>GEMINI_API_KEY=AIza...</code></li>
+                <li><code>npm run dev</code> を再起動</li>
+              </ol>
+            </details>
           </details>
           <label className="quality-toggle">
             <input
@@ -327,10 +334,7 @@ export function UploadPanel({
             高精度解析（Proモデル・高解像度・時間とAPIコスト増）
           </label>
           <p className="quality-hint">
-            精度を上げるコツ: 寸法線が読める図面、余白の少ないクロップ、PDFは1階ずつ。生成後は編集モードで微調整してください。
-            <br />
-            <strong>1/50 の平面詳細図など、文字や寸法が細かい図面は「高精度解析」を使ってください。</strong>
-            標準モードでは寸法を読みきれず、部屋の大きさがずれます（実測）。
+            1/50 の平面詳細図など、文字や寸法が細かい図面は「高精度解析」を使ってください（標準では部屋の大きさがずれやすい）。
           </p>
         </>
       )}

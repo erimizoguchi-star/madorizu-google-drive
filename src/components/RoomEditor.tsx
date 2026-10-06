@@ -130,8 +130,7 @@ export function RoomEditor({
     <div className="room-editor">
       <h3>間取図を編集</h3>
       <p className="editor-hint">
-        「追加」からクリック配置。部屋はドラッグで自由に移動できます。既存要素は選択して変形・移動・削除。<kbd>Esc</kbd>
-        で配置キャンセル、<kbd>Delete</kbd> で削除。<kbd>Ctrl</kbd>+<kbd>Z</kbd> で一手戻る。
+        クリックで選択・ドラッグで移動。<kbd>Delete</kbd> で削除、<kbd>Ctrl</kbd>+<kbd>Z</kbd> で一手戻る。
       </p>
 
       <div className="editor-history-row">
@@ -154,6 +153,17 @@ export function RoomEditor({
           やり直す
         </button>
       </div>
+
+      {/* 選んだ要素の設定は一番上に出す（下に出すと、選ぶたびに長くスクロールしないと見えない） */}
+      {selected?.kind === 'room' && <RoomPanel {...panelProps} selected={selected} />}
+      {selected?.kind === 'stair' && <StairPanel {...panelProps} selected={selected} />}
+      {selected?.kind === 'text' && <TextPanel {...panelProps} selected={selected} />}
+      {selected?.kind === 'wall' && (
+        <WallPanel {...panelProps} selected={selected} onError={onError} />
+      )}
+      {selected?.kind === 'door' && <DoorPanel {...panelProps} selected={selected} />}
+      {selected?.kind === 'window' && <WindowPanel {...panelProps} selected={selected} />}
+      {selected?.kind === 'fixture' && <FixturePanel {...panelProps} selected={selected} />}
 
       <div className="editor-add-section">
         <h4>要素を追加</h4>
@@ -178,23 +188,25 @@ export function RoomEditor({
             </button>
           ))}
         </div>
-        <p className="editor-field-hint">設備記号</p>
-        <div className="editor-add-grid">
-          {FIXTURE_TYPE_OPTIONS.map((opt) => {
-            const kind = fixturePlaceKind(opt.value)
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                className={`btn editor-add-btn ${placeKind === kind ? 'active' : ''}`}
-                title={opt.hint}
-                onClick={() => onPlaceKindChange(placeKind === kind ? null : kind)}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
+        <details className="editor-details editor-fixture-details" open={isFixturePlaceKind(placeKind ?? 'room')}>
+          <summary>設備記号（浴槽・便器・キッチンなど）</summary>
+          <div className="editor-add-grid">
+            {FIXTURE_TYPE_OPTIONS.map((opt) => {
+              const kind = fixturePlaceKind(opt.value)
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`btn editor-add-btn ${placeKind === kind ? 'active' : ''}`}
+                  title={opt.hint}
+                  onClick={() => onPlaceKindChange(placeKind === kind ? null : kind)}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </details>
         <button type="button" className="btn btn-secondary editor-add-quick" onClick={handleQuickAddRoom}>
           部屋をすぐ追加（横に配置）
         </button>
@@ -211,16 +223,6 @@ export function RoomEditor({
                 : '配置モード中 — 間取図をクリックして追加（もう一度ボタンか Esc で解除）'}
           </p>
         )}
-      </div>
-
-      <div className="editor-field">
-        <label htmlFor="plan-title">物件名</label>
-        <input
-          id="plan-title"
-          type="text"
-          value={floorPlan.title}
-          onChange={(e) => applyPlan((prev) => updateFloorPlanTitle(prev, e.target.value))}
-        />
       </div>
 
       <div className="editor-field">
@@ -246,8 +248,8 @@ export function RoomEditor({
       </div>
 
       {mergeFloor && mergeFloor.rooms.length >= 2 && (
-        <div className="editor-merge-section">
-          <h4>部屋の合成</h4>
+        <details className="editor-details editor-merge-section" open={activeMergeIds.length >= 2}>
+          <summary>部屋の合成（2部屋以上を1つにまとめる）</summary>
           <p className="editor-hint">
             同じ階で隣り合った部屋を2つ以上選び「合成する」を押してください。矩形だけでなく
             L字・コの字などの直交多角形も合成できます。内壁があっても合成できます。Ctrl+クリックでも追加選択できます。
@@ -273,18 +275,18 @@ export function RoomEditor({
           >
             選択した部屋を合成
           </button>
-        </div>
+        </details>
       )}
 
-      {selected?.kind === 'room' && <RoomPanel {...panelProps} selected={selected} />}
-      {selected?.kind === 'stair' && <StairPanel {...panelProps} selected={selected} />}
-      {selected?.kind === 'text' && <TextPanel {...panelProps} selected={selected} />}
-      {selected?.kind === 'wall' && (
-        <WallPanel {...panelProps} selected={selected} onError={onError} />
-      )}
-      {selected?.kind === 'door' && <DoorPanel {...panelProps} selected={selected} />}
-      {selected?.kind === 'window' && <WindowPanel {...panelProps} selected={selected} />}
-      {selected?.kind === 'fixture' && <FixturePanel {...panelProps} selected={selected} />}
+      <div className="editor-field">
+        <label htmlFor="plan-title">物件名</label>
+        <input
+          id="plan-title"
+          type="text"
+          value={floorPlan.title}
+          onChange={(e) => applyPlan((prev) => updateFloorPlanTitle(prev, e.target.value))}
+        />
+      </div>
     </div>
   )
 }

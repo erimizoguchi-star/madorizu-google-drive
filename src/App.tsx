@@ -63,6 +63,14 @@ import {
 } from './utils/propertyLink'
 import './App.css'
 
+type SidebarTab = 'load' | 'edit' | 'output'
+
+const SIDEBAR_TABS: { key: SidebarTab; label: string }[] = [
+  { key: 'load', label: '① 読み込み' },
+  { key: 'edit', label: '② 編集' },
+  { key: 'output', label: '③ 出力・保存' },
+]
+
 function App() {
   // 物件情報管理システムから開かれた場合の物件情報（URL の ?property= / name=）
   const [propertyLink] = useState(() => propertyLinkFromUrl())
@@ -95,7 +103,8 @@ function App() {
   const [sourcePreview, setSourcePreview] = useState<{ url: string; fileName: string } | null>(null)
   const [analysisInfo, setAnalysisInfo] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [editMode, setEditMode] = useState(false)
+  /** サイドバーの作業段階。編集タブを開いている間が「編集モード」 */
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('load')
   const [selected, setSelected] = useState<SelectedElementRef | null>(null)
   const [mergeRoomIds, setMergeRoomIds] = useState<{ floorId: string; roomIds: string[] } | null>(
     null
@@ -135,6 +144,7 @@ function App() {
     }
     setAnalysisInfo(result)
     setError(null)
+    setSidebarTab('edit')
     setAligning(false)
     setPlanStretch(null)
     setSelected(null)
@@ -147,10 +157,24 @@ function App() {
     }
   }
 
+  const editMode = !!floorPlan && sidebarTab === 'edit'
+
+  /** タブを切り替える。編集タブを離れるときは、選択や配置をやめる */
+  const changeSidebarTab = (tab: SidebarTab) => {
+    setSidebarTab(tab)
+    if (tab === 'edit') return
+    setSelected(null)
+    setMergeRoomIds(null)
+    setPlaceKind(null)
+    setWallDraftStart(null)
+    setPlaceWallTarget(null)
+  }
+
   /** 「線を合わせる」を始める・終える。始めるときは選択や配置をやめ、平面図があれば重ねる */
   const toggleAligning = (on: boolean) => {
     setAligning(on)
     if (!on) return
+    setSidebarTab('edit')
     setSelected(null)
     setMergeRoomIds(null)
     setPlaceKind(null)
@@ -178,7 +202,7 @@ function App() {
     }
 
     setSelected(ref)
-    setEditMode(true)
+    setSidebarTab('edit')
     setPlaceKind(null)
     setWallDraftStart(null)
     setPlaceWallTarget(null)
@@ -387,151 +411,122 @@ function App() {
 
       <main className="app-main">
         <aside className={`sidebar ${panelHidden ? 'sidebar-collapsed' : ''}`}>
-          <UploadPanel
-            onResult={handleResult}
-            canAppend={!!floorPlan}
-            onSourceReady={(source) => {
-              setSourcePreview({ url: source.previewUrl, fileName: source.fileName })
-              setError(null)
-            }}
-            onError={(msg) => {
-              setError(msg || null)
-            }}
-            propertySources={
-              uploadUrl
-                ? { sources: propertySources, load: (source) => fetchPropertySourceFile(uploadUrl, source) }
-                : undefined
-            }
-          />
+          {floorPlan && (
+            <nav className="sidebar-tabs" role="tablist" aria-label="作業の段階">
+              {SIDEBAR_TABS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={sidebarTab === key}
+                  className={`sidebar-tab ${sidebarTab === key ? 'active' : ''}`}
+                  onClick={() => changeSidebarTab(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
 
           {error && <div className="error-banner">{error}</div>}
 
-          {analysisInfo && (
-            <div className="analysis-info">
-              <h4>解析結果</h4>
-              {analysisInfo.mode === 'gemini' && (
-                <p>信頼度: {Math.round(analysisInfo.confidence * 100)}%</p>
-              )}
-              <ul>
-                {analysisInfo.notes.map((note, i) => (
-                  <li key={i}>{note}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* タブを切り替えても読み込み中のファイルなどが消えないよう、中身は隠すだけにする */}
+          <div className="sidebar-tab-panel" hidden={!!floorPlan && sidebarTab !== 'load'}>
+            <UploadPanel
+              onResult={handleResult}
+              canAppend={!!floorPlan}
+              onSourceReady={(source) => {
+                setSourcePreview({ url: source.previewUrl, fileName: source.fileName })
+                setError(null)
+              }}
+              onError={(msg) => {
+                setError(msg || null)
+              }}
+              propertySources={
+                uploadUrl
+                  ? { sources: propertySources, load: (source) => fetchPropertySourceFile(uploadUrl, source) }
+                  : undefined
+              }
+            />
 
-          {floorPlan && (
-            <>
-              <FloorsPanel
-                floorPlan={floorPlan}
-                onChange={(next, options) => commit(next, options)}
-                onFloorRemoved={() => {
-                  setSelected(null)
-                  setMergeRoomIds(null)
-                  setPlaceKind(null)
-                  setWallDraftStart(null)
-                  setPlaceWallTarget(null)
-                }}
-              />
+            {analysisInfo && (
+              <div className="analysis-info">
+                <h4>解析結果</h4>
+                {analysisInfo.mode === 'gemini' && (
+                  <p>信頼度: {Math.round(analysisInfo.confidence * 100)}%</p>
+                )}
+                <ul>
+                  {analysisInfo.notes.map((note, i) => (
+                    <li key={i}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-              <div className="edit-mode-toggle">
-                <label className={editMode ? 'active' : ''}>
-                  <input
-                    type="checkbox"
-                    checked={editMode}
-                    onChange={(e) => {
-                      setEditMode(e.target.checked)
-                      if (!e.target.checked) {
-                        setSelected(null)
-                        setMergeRoomIds(null)
-                        setPlaceKind(null)
-                        setWallDraftStart(null)
-                      }
+            {floorPlan && (
+                  <FloorsPanel
+                    floorPlan={floorPlan}
+                    onChange={(next, options) => commit(next, options)}
+                    onFloorRemoved={() => {
+                      setSelected(null)
+                      setMergeRoomIds(null)
+                      setPlaceKind(null)
+                      setWallDraftStart(null)
+                      setPlaceWallTarget(null)
                     }}
                   />
-                  間取図を編集する
-                </label>
-              </div>
-
-              {editMode && (
-                <RoomEditor
-                  floorPlan={floorPlan}
-                  selected={selected}
-                  mergeRoomIds={mergeRoomIds}
-                  placeKind={placeKind}
-                  canUndo={canUndo}
-                  canRedo={canRedo}
-                  onUndo={() => {
-                    undo()
-                    setSelected(null)
-                    setMergeRoomIds(null)
-                  }}
-                  onRedo={() => {
-                    redo()
-                    setSelected(null)
-                    setMergeRoomIds(null)
-                  }}
-                  onPlaceKindChange={(kind) => {
-                    setPlaceKind(kind)
-                    setWallDraftStart(null)
-                    if (kind === 'door' || kind === 'window' || kind === 'opening') {
-                      if (selected?.kind === 'wall') {
-                        setPlaceWallTarget({
-                          floorId: selected.floorId,
-                          wallId: selected.wallId,
-                        })
-                      } else {
-                        setPlaceWallTarget(null)
-                        setSelected(null)
-                      }
-                    } else {
-                      setPlaceWallTarget(null)
-                      if (kind) setSelected(null)
-                    }
-                  }}
-                  onSelect={handleSelect}
-                  onMergeRoomIdsChange={setMergeRoomIds}
-                  onChange={(updater) => commit(updater)}
-                  onError={setError}
-                />
-              )}
-            </>
-          )}
-
-          <div className="legend">
-            <h4>凡例</h4>
-            <div className="legend-items">
-              {LEGEND_ITEMS.map((item) => (
-                <span key={item.type} className="legend-item">
-                  <i style={{ background: ROOM_COLORS[item.type].fill }} />
-                  {item.label}
-                </span>
-              ))}
-            </div>
+            )}
           </div>
 
           {floorPlan && (
-            <>
-              <SavedPlansPanel
-                floorPlan={floorPlan}
-                currentId={savedPlanId}
-                onCurrentIdChange={setSavedPlanId}
-                onLoad={(plan) => {
-                  resetFloorPlan(plan)
-                  setSelected(null)
-                  setMergeRoomIds(null)
-                  setPlaceKind(null)
-                }}
-              />
-              <JsonDataButtons
-                floorPlan={floorPlan}
-                onImport={(plan) => {
-                  resetFloorPlan(plan)
-                  setSelected(null)
-                  setMergeRoomIds(null)
-                  setPlaceKind(null)
-                }}
-              />
+            <div className="sidebar-tab-panel" hidden={sidebarTab !== 'edit'}>
+              {sidebarTab === 'edit' && (
+                  <RoomEditor
+                    floorPlan={floorPlan}
+                    selected={selected}
+                    mergeRoomIds={mergeRoomIds}
+                    placeKind={placeKind}
+                    canUndo={canUndo}
+                    canRedo={canRedo}
+                    onUndo={() => {
+                      undo()
+                      setSelected(null)
+                      setMergeRoomIds(null)
+                    }}
+                    onRedo={() => {
+                      redo()
+                      setSelected(null)
+                      setMergeRoomIds(null)
+                    }}
+                    onPlaceKindChange={(kind) => {
+                      setPlaceKind(kind)
+                      setWallDraftStart(null)
+                      if (kind === 'door' || kind === 'window' || kind === 'opening') {
+                        if (selected?.kind === 'wall') {
+                          setPlaceWallTarget({
+                            floorId: selected.floorId,
+                            wallId: selected.wallId,
+                          })
+                        } else {
+                          setPlaceWallTarget(null)
+                          setSelected(null)
+                        }
+                      } else {
+                        setPlaceWallTarget(null)
+                        if (kind) setSelected(null)
+                      }
+                    }}
+                    onSelect={handleSelect}
+                    onMergeRoomIdsChange={setMergeRoomIds}
+                    onChange={(updater) => commit(updater)}
+                    onError={setError}
+                  />
+              )}
+            </div>
+          )}
+
+          {floorPlan && (
+            <div className="sidebar-tab-panel" hidden={sidebarTab !== 'output'}>
               <ExportButton
                 targetId="madorizu-export"
                 filename={propertyLink ? `間取り図_${fileSafeName(propertyLink.name)}` : 'madorizu'}
@@ -550,7 +545,40 @@ function App() {
                   setPlaceWallTarget(null)
                 }}
               />
-            </>
+              <SavedPlansPanel
+                floorPlan={floorPlan}
+                currentId={savedPlanId}
+                onCurrentIdChange={setSavedPlanId}
+                onLoad={(plan) => {
+                  resetFloorPlan(plan)
+                  setSidebarTab('edit')
+                  setSelected(null)
+                  setMergeRoomIds(null)
+                  setPlaceKind(null)
+                }}
+              />
+              <JsonDataButtons
+                floorPlan={floorPlan}
+                onImport={(plan) => {
+                  resetFloorPlan(plan)
+                  setSidebarTab('edit')
+                  setSelected(null)
+                  setMergeRoomIds(null)
+                  setPlaceKind(null)
+                }}
+              />
+            <div className="legend">
+              <h4>凡例</h4>
+              <div className="legend-items">
+                {LEGEND_ITEMS.map((item) => (
+                  <span key={item.type} className="legend-item">
+                    <i style={{ background: ROOM_COLORS[item.type].fill }} />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            </div>
           )}
         </aside>
 
