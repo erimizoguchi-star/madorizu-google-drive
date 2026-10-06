@@ -677,6 +677,9 @@
 .floor-canvas {
   /* 大きさは svg の width/height 属性（実寸）に任せ、拡大縮小は ZoomableView で行う */
   display: block;
+  /* 部屋のダブルクリック（名前の入力）で、図面の文字が選択状態にならないようにする */
+  user-select: none;
+  -webkit-user-select: none;
   width: auto;
   height: auto;
   border: 1px solid #ddd;

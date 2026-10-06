@@ -77,8 +77,10 @@ interface FloorPlanViewProps {
   onOverlayCalibrationStep?: (step: number) => void
   /** 「線を合わせる」中。通りをドラッグで動かせ、ほかの編集は止まる */
   aligning?: boolean
-  /** 選んだ要素の上に出すメニュー（扉・窓） */
+  /** 選んだ要素の上に出すメニュー（部屋・扉・窓） */
   selectionToolbar?: ReactNode
+  /** 部屋（部屋名）をダブルクリックしたとき */
+  onRoomDoubleClick?: (ref: SelectedElementRef & { kind: 'room' }) => void
   /**
    * 通りを動かす。to は吸い付きを反映した位置。
    * start で動かす前の間取図を覚え、move のたびに from → to をその間取図に当て直す（end で終了）
@@ -132,6 +134,7 @@ export function FloorPlanView({
   onOverlayCalibrationStep,
   aligning,
   selectionToolbar,
+  onRoomDoubleClick,
   onGridLineMove,
   onSelect,
   onLabelOffsetChange,
@@ -557,6 +560,11 @@ export function FloorPlanView({
               }
               selectionToolbar={
                 !locked && selected?.floorId === floor.id ? selectionToolbar : undefined
+              }
+              onRoomDoubleClick={
+                !locked && onRoomDoubleClick
+                  ? (roomId) => onRoomDoubleClick({ kind: 'room', floorId: floor.id, roomId })
+                  : undefined
               }
               onGridLineDrag={
                 aligning && onGridLineMove

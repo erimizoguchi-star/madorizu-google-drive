@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ExportButton } from './components/ExportButton'
 import { FloorsPanel } from './components/FloorsPanel'
 import { JsonDataButtons } from './components/JsonDataButtons'
@@ -122,6 +122,8 @@ function App() {
   const gridDragBaseRef = useRef<FloorPlan | null>(null)
   /** 2点合わせで分かった、間取図を平面図に合わせるための横・縦の倍率（ずれが小さければ null） */
   const [planStretch, setPlanStretch] = useState<{ sx: number; sy: number } | null>(null)
+  /** ダブルクリックした部屋。その場メニューの部屋名の欄に1回だけカーソルを入れる */
+  const [focusNameRoomId, setFocusNameRoomId] = useState<string | null>(null)
   /** 扉・窓・開口の連続配置で優先する壁 */
   const [placeWallTarget, setPlaceWallTarget] = useState<{
     floorId: string
@@ -158,6 +160,7 @@ function App() {
   }
 
   const editMode = !!floorPlan && sidebarTab === 'edit'
+  const clearFocusNameRoom = useCallback(() => setFocusNameRoomId(null), [])
 
   /** タブを切り替える。編集タブを離れるときは、選択や配置をやめる */
   const changeSidebarTab = (tab: SidebarTab) => {
@@ -739,13 +742,19 @@ function App() {
                   }))
                 }}
                 aligning={aligning}
+                onRoomDoubleClick={(ref) => {
+                  handleSelect(ref)
+                  setFocusNameRoomId(ref.roomId)
+                }}
                 selectionToolbar={
                   editMode && selected && !aligning ? (
                     <SelectionToolbar
                       floorPlan={floorPlan}
                       selected={selected}
-                      onChange={(updater) => commit(updater)}
+                      onChange={(updater, options) => commit(updater, options)}
                       onDelete={deleteSelection}
+                      focusName={selected.kind === 'room' && selected.roomId === focusNameRoomId}
+                      onNameFocused={clearFocusNameRoom}
                     />
                   ) : undefined
                 }

@@ -132,6 +132,19 @@ export function ZoomableView({
     return () => viewport.removeEventListener('wheel', onWheel)
   }, [applyZoomAtPoint])
 
+  // 移動は transform（pan）で行い、枠のスクロールは使わない。中の入力欄にカーソルが入ったときなどに
+  // ブラウザが枠を自動でスクロールすると、図面が枠の外へずれて見えなくなるので、すぐ戻す
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport) return
+    const onScroll = () => {
+      if (viewport.scrollLeft !== 0) viewport.scrollLeft = 0
+      if (viewport.scrollTop !== 0) viewport.scrollTop = 0
+    }
+    viewport.addEventListener('scroll', onScroll)
+    return () => viewport.removeEventListener('scroll', onScroll)
+  }, [])
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.button !== 1) return
     if (!isPanTarget(e.target, editInteractive)) return

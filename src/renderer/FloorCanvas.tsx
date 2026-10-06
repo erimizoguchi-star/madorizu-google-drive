@@ -63,8 +63,10 @@ interface FloorCanvasProps {
   onPlaceClick?: (positionFloor: Point) => void
   /** 「線を合わせる」のとき、通りをドラッグしたとき */
   onGridLineDrag?: GridLineDragHandler
-  /** 選んだ扉・窓の上に出すメニュー（この階の要素が選ばれているときだけ渡される） */
+  /** 選んだ部屋・扉・窓の上に出すメニュー（この階の要素が選ばれているときだけ渡される） */
   selectionToolbar?: ReactNode
+  /** 部屋（または部屋名）をダブルクリックしたとき。名前をすぐ打ち込めるようにする */
+  onRoomDoubleClick?: (roomId: string) => void
 }
 
 function getBounds(floor: Floor) {
@@ -140,6 +142,7 @@ export function FloorCanvas({
   onPlaceClick,
   onGridLineDrag,
   selectionToolbar,
+  onRoomDoubleClick,
 }: FloorCanvasProps) {
   // ドラッグ中に描画範囲が変わると図面が伸縮し、掴んだ要素がカーソルから離れてしまう。
   // ドラッグしている間は範囲を固定し、離した時点で新しい範囲に合わせ直す。
@@ -223,10 +226,12 @@ export function FloorCanvas({
       ? transformedFloor.fixtures.find((f) => f.id === selectedFixtureId)
       : undefined
 
-  // その場メニューを置く位置（選んだ扉・窓の上端の中央）
+  // その場メニューを置く位置（選んだ部屋・扉・窓の上端の中央）
   const toolbarPoints: Point[] = !selectionToolbar
     ? []
-    : selectedDoorId != null
+    : selectedRoomId != null
+      ? (transformedFloor.rooms.find((r) => r.id === selectedRoomId)?.polygon ?? [])
+      : selectedDoorId != null
       ? (() => {
           const door = transformedFloor.doors.find((d) => d.id === selectedDoorId)
           return door ? doorPaintExtentPoints(door) : []
@@ -258,6 +263,15 @@ export function FloorCanvas({
           // 間取図の座標 (0,0) が SVG のどこに来るか。描画範囲が変わると動くので、重ねた平面図を追従させるのに使う
           data-origin={`${offsetX},${offsetY}`}
           data-floor-id={floor.id}
+          onDoubleClick={
+            onRoomDoubleClick
+              ? (e) => {
+                  const hit = (e.target as Element).closest('[data-room-id], [data-label-room-id]')
+                  const roomId = hit?.getAttribute('data-room-id') ?? hit?.getAttribute('data-label-room-id')
+                  if (roomId) onRoomDoubleClick(roomId)
+                }
+              : undefined
+          }
           className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
           xmlns="http://www.w3.org/2000/svg"
         >
@@ -377,23 +391,24 @@ export function FloorCanvas({
               const label = computeRoomLabelLayout(room)
               if (!label) return null
               return (
-                <RoomLabels
-                  key={`label-${room.id}`}
-                  layout={label}
-                  editable={editable}
-                  selected={selectedRoomId === room.id}
-                  offsets={{
-                    name: room.nameLabelOffset,
-                    area: room.areaLabelOffset,
-                    note: room.noteLabelOffset,
-                  }}
-                  onSelect={() => onRoomSelect?.(room.id, false)}
-                  onLabelOffsetChange={
-                    onRoomLabelOffsetChange
-                      ? (kind, offset) => onRoomLabelOffsetChange(room.id, kind, offset)
-                      : undefined
-                  }
-                />
+                <g key={`label-${room.id}`} data-label-room-id={room.id}>
+                  <RoomLabels
+                    layout={label}
+                    editable={editable}
+                    selected={selectedRoomId === room.id}
+                    offsets={{
+                      name: room.nameLabelOffset,
+                      area: room.areaLabelOffset,
+                      note: room.noteLabelOffset,
+                    }}
+                    onSelect={() => onRoomSelect?.(room.id, false)}
+                    onLabelOffsetChange={
+                      onRoomLabelOffsetChange
+                        ? (kind, offset) => onRoomLabelOffsetChange(room.id, kind, offset)
+                        : undefined
+                    }
+                  />
+                </g>
               )
             })}
             {transformedFloor.stairs.map((stair) => {
