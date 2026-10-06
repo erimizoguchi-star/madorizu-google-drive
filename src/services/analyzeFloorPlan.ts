@@ -497,13 +497,15 @@ async function analyzeWithGemini(
 
     quality === 'high'
 
-      ? [GEMINI_MODEL_PRO, GEMINI_MODEL_FLASH_THINKING, GEMINI_MODEL_FLASH, 'gemini-2.5-flash']
+      ? [GEMINI_MODEL_PRO, GEMINI_MODEL_FLASH_THINKING, GEMINI_MODEL_FLASH]
 
-      : [GEMINI_MODEL_FLASH, 'gemini-2.5-flash']
+      : [GEMINI_MODEL_FLASH, GEMINI_MODEL_FLASH_THINKING]
 
 
 
-  let lastError: Error | null = null
+  // gemini-2.5-flash は新規の利用者に提供されなくなった（2026-10）。予備に残すと、
+  // 本来のエラー（混雑など）が「2.5 は使えません」という英語のエラーで上書きされてしまう
+  let firstError: Error | null = null
 
   for (let i = 0; i < models.length; i++) {
 
@@ -519,7 +521,8 @@ async function analyzeWithGemini(
 
       const err = error instanceof Error ? error : new Error('解析に失敗しました')
 
-      lastError = err
+      // 予備モデルのエラーより、最初に試したモデルのエラーのほうが原因を表している
+      firstError ??= err
 
       const canFallback =
 
@@ -539,7 +542,7 @@ async function analyzeWithGemini(
 
 
 
-  throw lastError ?? new Error('解析に失敗しました')
+  throw firstError ?? new Error('解析に失敗しました')
 
 }
 
