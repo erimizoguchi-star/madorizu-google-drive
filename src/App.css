@@ -617,8 +617,9 @@
 }
 
 .floor-canvas {
-  width: 100%;
-  max-width: 640px;
+  /* 大きさは svg の width/height 属性（実寸）に任せ、拡大縮小は ZoomableView で行う */
+  display: block;
+  width: auto;
   height: auto;
   border: 1px solid #ddd;
   border-radius: 2px;
@@ -760,8 +761,13 @@
 
 .zoom-stage {
   display: inline-block;
-  width: fit-content;
+  /* 枠より広くても折り返さない（倍率で枠に収めるため、実寸のまま並べる） */
+  width: max-content;
   margin: 0 auto;
+}
+
+.floor-plan-zoom .floors-container {
+  flex-wrap: nowrap;
 }
 
 .zoom-spacer {

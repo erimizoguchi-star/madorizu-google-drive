@@ -18,6 +18,8 @@ import { FloorCanvas } from './FloorCanvas'
 interface FloorPlanViewProps {
   floorPlan: FloorPlan
   id?: string
+  /** 変わったときに図面全体を枠に収め直す（新しい図面を読み込んだとき） */
+  fitKey?: string | number
   editable?: boolean
   selected?: SelectedElementRef | null
   mergeRoomIds?: { floorId: string; roomIds: string[] } | null
@@ -82,6 +84,7 @@ function placeHint(kind: PlaceKind): string {
 export function FloorPlanView({
   floorPlan,
   id = 'madorizu-export',
+  fitKey,
   editable,
   selected,
   mergeRoomIds,
@@ -275,7 +278,11 @@ export function FloorPlanView({
         )
       )}
 
-      <ZoomableView editInteractive={!!onSelect || placing} className="floor-plan-zoom">
+      <ZoomableView
+        editInteractive={!!onSelect || placing}
+        className="floor-plan-zoom"
+        fitKey={fitKey}
+      >
         <div className="floors-container" ref={floorsRef}>
           {overlay?.enabled && overlayUrl && (
             <>

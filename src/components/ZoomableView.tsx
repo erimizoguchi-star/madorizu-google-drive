@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
-const ZOOM_MIN = 0.5
-const ZOOM_MAX = 3
+const ZOOM_MIN = 0.2
+const ZOOM_MAX = 5
 const ZOOM_STEP = 0.1
 const DEFAULT_ZOOM = 1
 
@@ -10,8 +10,13 @@ interface ZoomableViewProps {
   className?: string
   /** ラベル編集などインタラクティブ時はラベル上でのみパンを抑止 */
   editInteractive?: boolean
-  /** 初期表示で内容全体がビューポートに収まるよう調整 */
+  /** 初期表示で内容全体がビューポートに収まるよう調整（内容が変わるたびに合わせ直す） */
   fitToView?: boolean
+  /**
+   * この値が変わったとき（新しい図面を読み込んだときなど）と、枠の大きさが変わったときだけ
+   * 内容全体を枠に収める。編集で内容が変わっても倍率と位置は動かさない。
+   */
+  fitKey?: string | number
 }
 
 function clampZoom(value: number) {
@@ -53,7 +58,9 @@ export function ZoomableView({
   className = '',
   editInteractive = false,
   fitToView = false,
+  fitKey,
 }: ZoomableViewProps) {
+  const fitOnKey = fitKey !== undefined
   const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
@@ -213,8 +220,31 @@ export function ZoomableView({
     }
   }, [fitToView, fitContentToViewport, children])
 
+  useEffect(() => {
+    if (!fitOnKey) return
+
+    const viewport = viewportRef.current
+    if (!viewport) return
+
+    let raf = 0
+    const scheduleFit = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => fitContentToViewport())
+    }
+
+    scheduleFit()
+    // 「編集画面を広げる」やウィンドウの変更で枠が変わったときも合わせ直す
+    const observer = new ResizeObserver(scheduleFit)
+    observer.observe(viewport)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      observer.disconnect()
+    }
+  }, [fitOnKey, fitKey, fitContentToViewport])
+
   const resetView = () => {
-    if (fitToView) {
+    if (fitToView || fitOnKey) {
       fitContentToViewport()
       return
     }
@@ -250,7 +280,7 @@ export function ZoomableView({
           type="button"
           className="btn btn-secondary zoom-reset-btn"
           onClick={resetView}
-          disabled={!fitToView && zoom === DEFAULT_ZOOM && pan.x === 0 && pan.y === 0}
+          disabled={!fitToView && !fitOnKey && zoom === DEFAULT_ZOOM && pan.x === 0 && pan.y === 0}
         >
           リセット
         </button>

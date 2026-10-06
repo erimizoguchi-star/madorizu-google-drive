@@ -46,7 +46,10 @@ export function RoomLabels({
     moved: boolean
   } | null>(null)
 
-  const canDrag = editable && onLabelOffsetChange
+  // ラベルの位置調整は、部屋を選択してからに限る。
+  // 未選択のときもラベルを掴めるようにすると、小さい部屋では当たり判定が部屋のほぼ全体を覆い、
+  // 部屋を動かすつもりのドラッグでラベルだけがずれてしまう。
+  const canDrag = editable && onLabelOffsetChange && selected
 
   const endDrag = (pointerId: number) => {
     if (dragRef.current?.pointerId !== pointerId) return
@@ -112,7 +115,7 @@ export function RoomLabels({
       {[...layout.lines].reverse().map((line) => {
         const isDraggable = canDrag && draggableKinds.includes(line.kind)
         const { width, height } = estimateTextBox(line.text, line.fontSize)
-        const hitPad = 12
+        const hitPad = 4
         const hitW = width + hitPad * 2
         const hitH = height + hitPad * 2
 

@@ -214,6 +214,10 @@ export function FloorCanvas({
       <div className="floor-label">{floor.label}</div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
+        // 実寸（1単位=1px）で描く。width を省くと SVG 既定の 300px 幅になって図面が小さく出るうえ、
+        // 階ごとに縮尺が揃わない。画面上の拡大縮小は ZoomableView が受け持つ。
+        width={width}
+        height={height}
         className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
         xmlns="http://www.w3.org/2000/svg"
       >

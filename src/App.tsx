@@ -78,6 +78,7 @@ function App() {
     floorPlan,
     canUndo,
     canRedo,
+    planGeneration,
     reset: resetFloorPlan,
     commit,
     undo,
@@ -544,6 +545,7 @@ function App() {
               )}
               <FloorPlanView
                 floorPlan={floorPlan}
+                fitKey={planGeneration}
                 editable={editMode}
                 overlay={overlay}
                 overlayUrl={sourcePreview?.url}
