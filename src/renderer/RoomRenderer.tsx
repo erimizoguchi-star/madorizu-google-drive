@@ -11,6 +11,8 @@ import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
 
 interface RoomRendererProps {
   room: Room
+  /** 切り抜き（clipPath）の id を階ごとに分けるための接頭辞。部屋の id は階をまたいで重なるため */
+  clipScope?: string
   /** canvas → floor 変換用（ドラッグ移動時） */
   floorOffset?: Point
   selected?: boolean
@@ -26,6 +28,7 @@ interface RoomRendererProps {
 
 export function RoomRenderer({
   room,
+  clipScope = '',
   floorOffset = { x: 0, y: 0 },
   selected,
   mergeSelected,
@@ -39,7 +42,7 @@ export function RoomRenderer({
   const fillColor = resolveRoomFillColor(room)
   const fillPattern = resolveRoomFillPattern(room)
   const path = filletedPolygonPath(room.polygon, room.cornerRadiiMm)
-  const clipId = `room-clip-${room.id}`
+  const clipId = `room-clip-${clipScope}-${room.id}`
   const label = computeRoomLabelLayout(room)
   const canSelect = selectable && onSelect
   const canDrag = editable && !!onMove

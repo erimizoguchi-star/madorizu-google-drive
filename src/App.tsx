@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ExportButton } from './components/ExportButton'
+import { FloorsPanel } from './components/FloorsPanel'
 import { JsonDataButtons } from './components/JsonDataButtons'
 import { RoomEditor } from './components/RoomEditor'
 import { SavedPlansPanel } from './components/SavedPlansPanel'
@@ -45,6 +46,7 @@ import {
   setWallEndpoints,
   setWindowEndpoints,
 } from './utils/floorPlanDrag'
+import { appendFloors } from './utils/floorPlanFloors'
 import {
   fetchPropertySourceFile,
   fetchPropertySources,
@@ -105,8 +107,20 @@ function App() {
     wallId: string
   } | null>(null)
 
-  const handleResult = (result: AnalysisResult) => {
-    resetFloorPlan(result.floorPlan)
+  const handleResult = (result: AnalysisResult, options: { append: boolean }) => {
+    if (options.append && floorPlan) {
+      const appended = appendFloors(floorPlan, result.floorPlan)
+      if ('error' in appended) {
+        setError(appended.error)
+        return
+      }
+      // 階の追加も「元に戻す」で取り消せるよう、履歴に積む
+      commit(appended.floorPlan)
+      // 重ね合わせは間取図全体に合わせる作りなので、階が増えたら一度外す
+      setOverlay((prev) => ({ ...prev, enabled: false, adjusting: false, calibrating: false }))
+    } else {
+      resetFloorPlan(result.floorPlan)
+    }
     setAnalysisInfo(result)
     setError(null)
     setSelected(null)
@@ -315,6 +329,7 @@ function App() {
         <aside className={`sidebar ${panelHidden ? 'sidebar-collapsed' : ''}`}>
           <UploadPanel
             onResult={handleResult}
+            canAppend={!!floorPlan}
             onSourceReady={(source) => {
               setSourcePreview({ url: source.previewUrl, fileName: source.fileName })
               setError(null)
@@ -347,6 +362,18 @@ function App() {
 
           {floorPlan && (
             <>
+              <FloorsPanel
+                floorPlan={floorPlan}
+                onChange={(next, options) => commit(next, options)}
+                onFloorRemoved={() => {
+                  setSelected(null)
+                  setMergeRoomIds(null)
+                  setPlaceKind(null)
+                  setWallDraftStart(null)
+                  setPlaceWallTarget(null)
+                }}
+              />
+
               <div className="edit-mode-toggle">
                 <label className={editMode ? 'active' : ''}>
                   <input
@@ -545,7 +572,8 @@ function App() {
               )}
               <FloorPlanView
                 floorPlan={floorPlan}
-                fitKey={planGeneration}
+                // 階を足したり消したりしたときも、全体が枠に収まるよう合わせ直す
+                fitKey={`${planGeneration}-${floorPlan.floors.length}`}
                 editable={editMode}
                 overlay={overlay}
                 overlayUrl={sourcePreview?.url}

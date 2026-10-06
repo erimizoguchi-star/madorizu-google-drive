@@ -13,6 +13,8 @@ import {
 
 interface StairRendererProps {
   stair: Stair
+  /** 切り抜き（clipPath）の id を階ごとに分けるための接頭辞。階段の id は階をまたいで重なるため */
+  clipScope?: string
   selected?: boolean
   selectable?: boolean
   editable?: boolean
@@ -26,6 +28,7 @@ interface StairRendererProps {
 
 export function StairRenderer({
   stair,
+  clipScope = '',
   selected,
   selectable,
   editable,
@@ -36,7 +39,7 @@ export function StairRenderer({
   onLabelOffsetChange,
 }: StairRendererProps) {
   const path = pointsToPath(stair.polygon)
-  const clipId = `stair-clip-${stair.id}`
+  const clipId = `stair-clip-${clipScope}-${stair.id}`
   const { stepLines, arrowPath } = computeStairGraphics(stair)
   const label = computeStairLabelLayout(stair)
   const canSelect = selectable && onSelect

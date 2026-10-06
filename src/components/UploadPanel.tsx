@@ -13,7 +13,8 @@ import type { PropertySource } from '../utils/propertyLink'
 const STORAGE_KEY = 'madorizu-gemini-api-key'
 
 interface UploadPanelProps {
-  onResult: (result: AnalysisResult) => void
+  /** append: true のときは今の間取図に階として加える。false は作り直す */
+  onResult: (result: AnalysisResult, options: { append: boolean }) => void
   onSourceReady: (source: { previewUrl: string; fileName: string }) => void
   onError: (message: string) => void
   disabled?: boolean
@@ -21,9 +22,18 @@ interface UploadPanelProps {
    * 物件情報管理システムにある、この物件の図面。指定があると一覧を出し、選ぶとアップロードと同じように読み込む。
    */
   propertySources?: { sources: PropertySource[]; load: (source: PropertySource) => Promise<File> }
+  /** 間取図がすでにあるとき true。「階として追加」を出す */
+  canAppend?: boolean
 }
 
-export function UploadPanel({ onResult, onSourceReady, onError, disabled, propertySources }: UploadPanelProps) {
+export function UploadPanel({
+  onResult,
+  onSourceReady,
+  onError,
+  disabled,
+  propertySources,
+  canAppend,
+}: UploadPanelProps) {
   const [loadingSourceId, setLoadingSourceId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const previewUrlRef = useRef<string | null>(null)
@@ -40,6 +50,8 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled, proper
   const [preparedInput, setPreparedInput] = useState<PreparedFloorPlanInput | null>(null)
   const [selectedPage, setSelectedPage] = useState(1)
   const [highQuality, setHighQuality] = useState(false)
+  /** 最後に解析した図面。同じ図面を続けて階として追加しないように使う */
+  const [analyzedInput, setAnalyzedInput] = useState<PreparedFloorPlanInput | null>(null)
 
   const revokePreview = useCallback((url: string | null) => {
     if (url?.startsWith('blob:')) {
@@ -58,7 +70,7 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled, proper
   const hasApiKey = serverHasKey || Boolean(normalizeApiKey(apiKey))
 
   const runAnalysis = useCallback(
-    async (input: PreparedFloorPlanInput, sourceName: string) => {
+    async (input: PreparedFloorPlanInput, sourceName: string, append: boolean) => {
       const normalized = normalizeApiKey(apiKey)
       const useServerKey = serverHasKey && !normalized
 
@@ -91,7 +103,8 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled, proper
             ...result.notes,
           ]
         }
-        onResult(result)
+        setAnalyzedInput(input)
+        onResult(result, { append })
       } catch (e) {
         onError(e instanceof Error ? e.message : '解析に失敗しました')
       } finally {
@@ -183,13 +196,16 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled, proper
     [sourceFile, loadInput]
   )
 
-  const handleGenerate = useCallback(() => {
-    if (!preparedInput || !sourceFile) {
-      onError('先に平面図ファイルをアップロードしてください')
-      return
-    }
-    void runAnalysis(preparedInput, sourceFile.name)
-  }, [preparedInput, sourceFile, runAnalysis, onError])
+  const handleGenerate = useCallback(
+    (append: boolean) => {
+      if (!preparedInput || !sourceFile) {
+        onError('先に平面図ファイルをアップロードしてください')
+        return
+      }
+      void runAnalysis(preparedInput, sourceFile.name, append)
+    },
+    [preparedInput, sourceFile, runAnalysis, onError]
+  )
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -199,6 +215,9 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled, proper
   }
 
   const busy = analyzing || loadingPreview
+  const showAppend = canAppend && !!preparedInput
+  // いま選んでいる図面が、すでに間取図にした図面のまま（次の階の図面をまだ選んでいない）
+  const sameAsAnalyzed = preparedInput != null && preparedInput === analyzedInput
 
   return (
     <div className="upload-panel">
@@ -390,13 +409,36 @@ export function UploadPanel({ onResult, onSourceReady, onError, disabled, proper
         )}
       </div>
 
+      {showAppend && (
+        <>
+          <button
+            type="button"
+            className="btn btn-primary generate-btn"
+            disabled={analyzing || disabled || sameAsAnalyzed}
+            onClick={() => handleGenerate(true)}
+          >
+            {analyzing ? '生成中...' : '今の間取図に階として追加'}
+          </button>
+          <p className="append-hint">
+            {sameAsAnalyzed
+              ? '次の階の図面を選ぶと、今の間取図の横に階として追加できます。'
+              : '1階・2階が別の図面のときは、こちらを押すと横に並んで1枚の間取図になります。'}
+          </p>
+        </>
+      )}
       <button
         type="button"
-        className="btn btn-primary generate-btn"
+        className={`btn ${showAppend ? 'btn-secondary' : 'btn-primary'} generate-btn`}
         disabled={!preparedInput || analyzing || disabled}
-        onClick={handleGenerate}
+        onClick={() => handleGenerate(false)}
       >
-        {analyzing ? '生成中...' : mode === 'demo' ? 'サンプル間取図を表示' : '間取図を生成'}
+        {analyzing
+          ? '生成中...'
+          : showAppend
+            ? '新しい間取図として作り直す'
+            : mode === 'demo'
+              ? 'サンプル間取図を表示'
+              : '間取図を生成'}
       </button>
       {analyzing && mode === 'gemini' && (
         <p className="analyzing-hint">

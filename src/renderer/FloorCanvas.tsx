@@ -200,6 +200,12 @@ export function FloorCanvas({
   }
 
   const floorOffset = { x: offsetX, y: offsetY }
+  // 建物（部屋の範囲）の右下。出力で階名をここに添える
+  const roomPoints = transformedFloor.rooms.flatMap((r) => r.polygon)
+  const buildingCorner =
+    roomPoints.length > 0
+      ? `${Math.max(...roomPoints.map((p) => p.x))},${Math.max(...roomPoints.map((p) => p.y))}`
+      : undefined
   const selectedWall =
     selectedWallId != null ? transformedFloor.walls.find((w) => w.id === selectedWallId) : undefined
   const selectedWindow =
@@ -218,6 +224,9 @@ export function FloorCanvas({
         // 階ごとに縮尺が揃わない。画面上の拡大縮小は ZoomableView が受け持つ。
         width={width}
         height={height}
+        // 出力（PNG / PDF など）で、階が複数あるとき各階の下に階名を描くために使う
+        data-floor-label={floor.label}
+        data-building-corner={buildingCorner}
         className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
         xmlns="http://www.w3.org/2000/svg"
       >
@@ -233,6 +242,7 @@ export function FloorCanvas({
             <RoomRenderer
               key={room.id}
               room={room}
+              clipScope={floor.id}
               floorOffset={floorOffset}
               selectable={!!onRoomSelect}
               editable={editable}
@@ -253,6 +263,7 @@ export function FloorCanvas({
             <StairRenderer
               key={stair.id}
               stair={stair}
+              clipScope={floor.id}
               selectable={!!onStairSelect}
               editable={editable}
               renderLabels={false}
