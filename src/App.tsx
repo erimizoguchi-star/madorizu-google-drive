@@ -18,6 +18,7 @@ import type { AnalysisResult, FloorPlan, Point } from './types/floorPlan'
 import type { SelectedElementRef, SelectOptions } from './utils/floorPlanEdit'
 import {
   deleteSelectedElement,
+  describeSelection,
   isDeletableSelection,
   isTypingInEditableField,
   resizeRoomEdge,
@@ -132,6 +133,15 @@ function App() {
       setSourcePreview({ url: result.sourcePreviewUrl, fileName: result.sourceFileName })
     }
   }
+
+  /** 選択中の要素を削除する（間取図の上の「削除」ボタン。Delete キーも同じ処理） */
+  const deleteSelection = () => {
+    if (!selected || !isDeletableSelection(selected)) return
+    commit((prev) => deleteSelectedElement(prev, selected))
+    setSelected(null)
+    setMergeRoomIds(null)
+  }
+  const selectedLabel = selected && floorPlan ? describeSelection(floorPlan, selected) : null
 
   const handleSelect = (ref: SelectedElementRef | null, options?: SelectOptions) => {
     if (!ref) {
@@ -526,7 +536,23 @@ function App() {
               >
                 {panelHidden ? '▶ 編集パネルを表示' : '◀ 編集パネルを隠す'}
               </button>
-              {wideEdit && (
+              {editMode && selected && selectedLabel && (
+                <span className="edit-selection">
+                  <span className="edit-selection__label">
+                    選択中: <strong>{selectedLabel}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    className="btn edit-selection__delete"
+                    onClick={deleteSelection}
+                    title="選択中の要素を削除します（Delete キーでも削除できます。「一手戻る」で戻せます）"
+                  >
+                    削除
+                  </button>
+                </span>
+              )}
+              {/* 選択中は「選択中・削除」を優先し、帯が2段にならないよう説明を隠す */}
+              {wideEdit && !(editMode && selectedLabel) && (
                 <span className="edit-space-hint">
                   アップロード画像と見出しを隠して、間取図を画面いっぱいに表示しています。
                 </span>

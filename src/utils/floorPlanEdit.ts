@@ -1061,6 +1061,26 @@ export function listAllEditableElements(
   return [...rooms, ...stairs, ...walls, ...doors, ...windows, ...fixtures, ...texts]
 }
 
+/** 選択中の要素の名前（「1階 / 外壁 w3」など）。見つからなければ null */
+export function describeSelection(floorPlan: FloorPlan, ref: SelectedElementRef): string | null {
+  const id =
+    ref.kind === 'room'
+      ? ref.roomId
+      : ref.kind === 'stair'
+        ? ref.stairId
+        : ref.kind === 'wall'
+          ? ref.wallId
+          : ref.kind === 'door'
+            ? ref.doorId
+            : ref.kind === 'window'
+              ? ref.windowId
+              : ref.kind === 'fixture'
+                ? ref.fixtureId
+                : ref.textId
+  const key = `${ref.kind}:${ref.floorId}:${id}`
+  return listAllEditableElements(floorPlan).find((e) => e.key === key)?.label ?? null
+}
+
 export function listAllRooms(
   floorPlan: FloorPlan
 ): Array<{ floorId: string; roomId: string; label: string }> {
