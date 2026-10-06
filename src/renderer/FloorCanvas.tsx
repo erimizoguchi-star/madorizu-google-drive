@@ -227,6 +227,8 @@ export function FloorCanvas({
         // 出力（PNG / PDF など）で、階が複数あるとき各階の下に階名を描くために使う
         data-floor-label={floor.label}
         data-building-corner={buildingCorner}
+        // 間取図の座標 (0,0) が SVG のどこに来るか。描画範囲が変わると動くので、重ねた平面図を追従させるのに使う
+        data-origin={`${offsetX},${offsetY}`}
         className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
         xmlns="http://www.w3.org/2000/svg"
       >

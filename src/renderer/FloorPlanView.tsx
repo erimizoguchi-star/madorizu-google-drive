@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { FloorPlan } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import { ZoomableView } from '../components/ZoomableView'
@@ -197,6 +197,42 @@ export function FloorPlanView({
       img.removeEventListener('load', fit)
     }
   }, [needsFit, onOverlayCalibrated])
+
+  /**
+   * 重ねた平面図を、間取図の建物に対して動かないようにする。
+   * 平面図の画像は枠（.floors-container）の中心を基準に置いている。ところが壁を建物の外へ動かすなどで
+   * 図面の描画範囲が変わると、枠の大きさと枠の中での建物の位置が変わり、平面図だけが取り残されてずれる。
+   * 1つ目の階の原点（座標 0,0）が枠の中心からどれだけ離れているかを覚えておき、変わったぶんだけ平面図も動かす。
+   * 描画のたびに測り、画面に出る前（useLayoutEffect）に直すので、ずれた瞬間は見えない。
+   */
+  const overlayAnchorRef = useRef<Point | null>(null)
+  const overlayShown = !!overlay?.enabled && !!overlayUrl
+  useLayoutEffect(() => {
+    if (!overlayShown || needsFit || !overlay) {
+      overlayAnchorRef.current = null
+      return
+    }
+    const container = floorsRef.current
+    const svg = container?.querySelector<SVGSVGElement>('svg.floor-canvas')
+    const [originX, originY] = (svg?.dataset.origin ?? '').split(',').map(Number)
+    if (!container || !svg || !Number.isFinite(originX) || !Number.isFinite(originY)) return
+
+    const zoom = currentZoom()
+    const rect = container.getBoundingClientRect()
+    const svgRect = svg.getBoundingClientRect()
+    // SVG は 1単位 = 1px で描いているので、原点は SVG の左上から originX, originY px の位置
+    const anchor = {
+      x: (svgRect.left - rect.left) / zoom + originX - container.offsetWidth / 2,
+      y: (svgRect.top - rect.top) / zoom + originY - container.offsetHeight / 2,
+    }
+    const prev = overlayAnchorRef.current
+    overlayAnchorRef.current = anchor
+    if (!prev) return
+    const dx = anchor.x - prev.x
+    const dy = anchor.y - prev.y
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return
+    onOverlayOffsetChange?.({ x: overlay.offset.x + dx, y: overlay.offset.y + dy })
+  })
 
   /**
    * 重ねた平面図の上で建物の左上・右下をクリックしてもらい、
