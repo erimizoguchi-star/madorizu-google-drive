@@ -301,6 +301,8 @@ export function ZoomableView({
           style={{
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: '0 0',
+            // 取っ手や掴み幅を、拡大率にかかわらず画面上で同じ大きさにするため CSS に渡す
+            ['--zoom' as string]: zoom,
           }}
         >
           {children}

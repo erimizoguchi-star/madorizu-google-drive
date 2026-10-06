@@ -37,6 +37,16 @@ interface SourceOverlayControlsProps {
   /** 2点合わせで今どこまでクリックしたか（0 or 1） */
   calibrationStep: number
   onChange: (next: SourceOverlayState) => void
+  /**
+   * 2点合わせで、間取図と平面図の縦横比が違うと分かったとき。
+   * sx, sy は間取図を平面図に合わせるための横・縦の倍率
+   */
+  stretch?: { sx: number; sy: number; onApply: () => void; onDismiss: () => void } | null
+}
+
+const percent = (s: number) => {
+  const p = Math.round((s - 1) * 1000) / 10
+  return `${p > 0 ? '+' : ''}${p}%`
 }
 
 export function SourceOverlayControls({
@@ -44,6 +54,7 @@ export function SourceOverlayControls({
   state,
   calibrationStep,
   onChange,
+  stretch,
 }: SourceOverlayControlsProps) {
   const patch = (p: Partial<SourceOverlayState>) => onChange({ ...state, ...p })
   // 縦横比維持のため、表示・操作は共通の縮尺（横基準）を使う
@@ -131,6 +142,23 @@ export function SourceOverlayControls({
           >
             リセット
           </button>
+
+          {stretch && (
+            <div className="overlay-stretch">
+              <p>
+                間取図の大きさが平面図と <strong>横 {percent(stretch.sx)}・縦 {percent(stretch.sy)}</strong>{' '}
+                違います（AI が寸法を読み違えたときに起きます）。
+              </p>
+              <div className="overlay-stretch__actions">
+                <button type="button" className="btn btn-primary" onClick={stretch.onApply}>
+                  間取図の縦横を平面図に合わせる
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={stretch.onDismiss}>
+                  このままにする
+                </button>
+              </div>
+            </div>
+          )}
 
           <p className="overlay-hint">
             {state.calibrating ? (

@@ -18,6 +18,7 @@ import { TextLabelRenderer } from './TextLabelRenderer'
 import { WallEditHandles } from './WallEditHandles'
 import { WindowEditHandles } from './WindowEditHandles'
 import { FixtureEditHandles } from './FixtureEditHandles'
+import { GridLinesLayer, type GridLineDragHandler } from './GridLinesLayer'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
 import { clientToSvg, canvasToFloor, isSvgDragging, subscribeSvgDrag } from './svgCoords'
@@ -59,6 +60,8 @@ interface FloorCanvasProps {
   /** 壁追加モードで1点目をクリックした位置（floor 座標） */
   wallDraftStart?: Point | null
   onPlaceClick?: (positionFloor: Point) => void
+  /** 「線を合わせる」のとき、通りをドラッグしたとき */
+  onGridLineDrag?: GridLineDragHandler
 }
 
 function getBounds(floor: Floor) {
@@ -132,6 +135,7 @@ export function FloorCanvas({
   placeMode,
   wallDraftStart,
   onPlaceClick,
+  onGridLineDrag,
 }: FloorCanvasProps) {
   // ドラッグ中に描画範囲が変わると図面が伸縮し、掴んだ要素がカーソルから離れてしまう。
   // ドラッグしている間は範囲を固定し、離した時点で新しい範囲に合わせ直す。
@@ -229,6 +233,7 @@ export function FloorCanvas({
         data-building-corner={buildingCorner}
         // 間取図の座標 (0,0) が SVG のどこに来るか。描画範囲が変わると動くので、重ねた平面図を追従させるのに使う
         data-origin={`${offsetX},${offsetY}`}
+        data-floor-id={floor.id}
         className={`floor-canvas ${editable ? 'floor-canvas-editable' : ''} ${onRoomSelect ? 'floor-canvas-selectable' : ''} ${placeMode ? 'floor-canvas-placing' : ''}`}
         xmlns="http://www.w3.org/2000/svg"
       >
@@ -482,6 +487,15 @@ export function FloorCanvas({
               fill="#C08A3E"
             />
           </g>
+        )}
+        {onGridLineDrag && (
+          <GridLinesLayer
+            floor={floor}
+            floorOffset={floorOffset}
+            width={width}
+            height={height}
+            onDrag={onGridLineDrag}
+          />
         )}
         <NorthArrow x={width - 28} y={32} size={26} />
       </svg>

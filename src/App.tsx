@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ExportButton } from './components/ExportButton'
 import { FloorsPanel } from './components/FloorsPanel'
 import { JsonDataButtons } from './components/JsonDataButtons'
@@ -48,6 +48,7 @@ import {
   setWindowEndpoints,
 } from './utils/floorPlanDrag'
 import { appendFloors } from './utils/floorPlanFloors'
+import { moveGridLine, scaleFloor } from './utils/gridLines'
 import {
   fetchPropertySourceFile,
   fetchPropertySources,
@@ -102,6 +103,12 @@ function App() {
   const [wideEdit, setWideEdit] = useState(false)
   const [panelHidden, setPanelHidden] = useState(false)
   const [wallDraftStart, setWallDraftStart] = useState<Point | null>(null)
+  /** 「線を合わせる」中。壁の通りをドラッグして元の平面図に合わせる */
+  const [aligning, setAligning] = useState(false)
+  /** 通りのドラッグを始めたときの間取図。ドラッグ中はこれに当て直す（途中で別の通りと重なっても混ざらない） */
+  const gridDragBaseRef = useRef<FloorPlan | null>(null)
+  /** 2点合わせで分かった、間取図を平面図に合わせるための横・縦の倍率（ずれが小さければ null） */
+  const [planStretch, setPlanStretch] = useState<{ sx: number; sy: number } | null>(null)
   /** 扉・窓・開口の連続配置で優先する壁 */
   const [placeWallTarget, setPlaceWallTarget] = useState<{
     floorId: string
@@ -124,6 +131,8 @@ function App() {
     }
     setAnalysisInfo(result)
     setError(null)
+    setAligning(false)
+    setPlanStretch(null)
     setSelected(null)
     setMergeRoomIds(null)
     setPlaceKind(null)
@@ -131,6 +140,20 @@ function App() {
     setPlaceWallTarget(null)
     if (result.sourcePreviewUrl && result.sourceFileName) {
       setSourcePreview({ url: result.sourcePreviewUrl, fileName: result.sourceFileName })
+    }
+  }
+
+  /** 「線を合わせる」を始める・終える。始めるときは選択や配置をやめ、平面図があれば重ねる */
+  const toggleAligning = (on: boolean) => {
+    setAligning(on)
+    if (!on) return
+    setSelected(null)
+    setMergeRoomIds(null)
+    setPlaceKind(null)
+    setWallDraftStart(null)
+    setPlaceWallTarget(null)
+    if (sourcePreview && !overlay.enabled) {
+      setOverlay((prev) => ({ ...prev, enabled: true, adjusting: false, calibrating: false, needsFit: true }))
     }
   }
 
@@ -301,6 +324,15 @@ function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [editMode, selected, undo, redo, commit])
+
+  useEffect(() => {
+    if (!aligning) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAligning(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [aligning])
 
   useEffect(() => {
     if (!placeKind) return
@@ -491,7 +523,8 @@ function App() {
                     : undefined
                 }
                 onBeforeExport={() => {
-                  // 選択枠・編集ハンドルが画像に写り込まないよう解除してから出力する
+                  // 選択枠・編集ハンドル・線合わせの線が画像に写り込まないよう解除してから出力する
+                  setAligning(false)
                   setSelected(null)
                   setMergeRoomIds(null)
                   setPlaceKind(null)
@@ -522,6 +555,14 @@ function App() {
 
           {floorPlan && (
             <div className="edit-space-bar">
+              <button
+                type="button"
+                className={`btn wide-edit-btn align-btn ${aligning ? 'active' : ''}`}
+                onClick={() => toggleAligning(!aligning)}
+                title="壁の通りをまとめて動かして、元の平面図に合わせます（Esc で終了）"
+              >
+                {aligning ? '✓ 線合わせを終える' : '📏 線を合わせる'}
+              </button>
               <button
                 type="button"
                 className={`btn btn-secondary wide-edit-btn ${wideEdit ? 'active' : ''}`}
@@ -593,7 +634,35 @@ function App() {
                   fileName={sourcePreview.fileName}
                   state={overlay}
                   calibrationStep={calibrationStep}
-                  onChange={setOverlay}
+                  onChange={(next) => {
+                    setOverlay(next)
+                    // 重ね方をやり直したら、前の2点合わせで出した提案は使えない
+                    if (!next.enabled || next.needsFit || next.calibrating) setPlanStretch(null)
+                  }}
+                  stretch={
+                    planStretch && {
+                      ...planStretch,
+                      onApply: () => {
+                        const { sx, sy } = planStretch
+                        commit((plan) => ({
+                          ...plan,
+                          floors: plan.floors.map((floor, i) => {
+                            // 2点合わせは1つ目の階の建物で測っているので、その階だけを合わせる
+                            if (i !== 0) return floor
+                            const points = floor.rooms.flatMap((r) => r.polygon)
+                            if (points.length === 0) return floor
+                            const origin = {
+                              x: Math.min(...points.map((p) => p.x)),
+                              y: Math.min(...points.map((p) => p.y)),
+                            }
+                            return scaleFloor(floor, origin, sx, sy)
+                          }),
+                        }))
+                        setPlanStretch(null)
+                      },
+                      onDismiss: () => setPlanStretch(null),
+                    }
+                  }
                 />
               )}
               <FloorPlanView
@@ -605,7 +674,13 @@ function App() {
                 overlayUrl={sourcePreview?.url}
                 onOverlayOffsetChange={(offset) => setOverlay((prev) => ({ ...prev, offset }))}
                 onOverlayCalibrationStep={setCalibrationStep}
-                onOverlayCalibrated={({ scaleX, scaleY, offset }) => {
+                onOverlayCalibrated={({ scaleX, scaleY, offset, planStretch: stretch }) => {
+                  // 縦横の倍率の差が 2% 未満なら、クリックの誤差とみなして提案しない
+                  setPlanStretch(
+                    stretch && (Math.abs(stretch.sx - 1) >= 0.02 || Math.abs(stretch.sy - 1) >= 0.02)
+                      ? stretch
+                      : null
+                  )
                   // 縦横比維持: 万一ずれていても共通の縮尺に揃える
                   const scale = (scaleX + scaleY) / 2
                   setOverlay((prev) => ({
@@ -616,6 +691,26 @@ function App() {
                     calibrating: false,
                     needsFit: false,
                   }))
+                }}
+                aligning={aligning}
+                onGridLineMove={(floorId, axis, from, to, phase) => {
+                  if (phase === 'start') {
+                    gridDragBaseRef.current = floorPlan
+                    return
+                  }
+                  if (phase === 'end') {
+                    gridDragBaseRef.current = null
+                    return
+                  }
+                  const base = gridDragBaseRef.current
+                  if (!base) return
+                  commit(
+                    () => ({
+                      ...base,
+                      floors: base.floors.map((f) => (f.id === floorId ? moveGridLine(f, axis, from, to) : f)),
+                    }),
+                    { coalesce: true }
+                  )
                 }}
                 selected={selected}
                 mergeRoomIds={mergeRoomIds}

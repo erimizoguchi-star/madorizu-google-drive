@@ -14,6 +14,10 @@ import type { FixtureCorner } from '../utils/floorPlanDrag'
 import type { RectEdge } from '../utils/roomGeometry'
 import type { LabelLineKind } from './roomLabelLayout'
 import { FloorCanvas } from './FloorCanvas'
+import type { GridSnapKind } from './GridLinesLayer'
+import { collectGridLines, type GridAxis } from '../utils/gridLines'
+import { darkMapFromImage, findLineNear, type DarkMap } from '../utils/imageLines'
+import { mmToSvgUnits } from '../utils/roomGeometry'
 
 interface FloorPlanViewProps {
   floorPlan: FloorPlan
@@ -59,11 +63,40 @@ interface FloorPlanViewProps {
   overlay?: SourceOverlayState
   overlayUrl?: string
   onOverlayOffsetChange?: (offset: Point) => void
-  /** 2点合わせの結果（倍率と位置）を反映する */
-  onOverlayCalibrated?: (result: { scaleX: number; scaleY: number; offset: Point }) => void
+  /**
+   * 2点合わせの結果（倍率と位置）を反映する。
+   * planStretch は、1つ目の階の建物を平面図の建物にぴったり合わせるための横・縦の倍率（2点合わせのときだけ）
+   */
+  onOverlayCalibrated?: (result: {
+    scaleX: number
+    scaleY: number
+    offset: Point
+    planStretch?: { sx: number; sy: number }
+  }) => void
   /** 2点合わせで何点クリック済みかを親へ伝える */
   onOverlayCalibrationStep?: (step: number) => void
+  /** 「線を合わせる」中。通りをドラッグで動かせ、ほかの編集は止まる */
+  aligning?: boolean
+  /**
+   * 通りを動かす。to は吸い付きを反映した位置。
+   * start で動かす前の間取図を覚え、move のたびに from → to をその間取図に当て直す（end で終了）
+   */
+  onGridLineMove?: (
+    floorId: string,
+    axis: GridAxis,
+    from: number,
+    to: number,
+    phase: 'start' | 'move' | 'end'
+  ) => void
 }
+
+/** 吸い付く距離（画面上の px） */
+const SNAP_RADIUS_PX = 14
+const LINE_SNAP_PX = 8
+/** 2本線で描いた壁とみなす最大の厚み */
+const MAX_WALL_THICKNESS_MM = 250
+/** 吸い付き・ドラッグ後の位置の刻み（5mm） */
+const roundHalf = (v: number) => Math.round(v * 2) / 2
 
 const BASE_PLACE_HINTS: Record<Exclude<PlaceKind, `fixture:${string}`>, string> = {
   room: '間取図上をクリックして部屋を配置（配置後ドラッグで移動できます）',
@@ -95,6 +128,8 @@ export function FloorPlanView({
   onOverlayOffsetChange,
   onOverlayCalibrated,
   onOverlayCalibrationStep,
+  aligning,
+  onGridLineMove,
   onSelect,
   onLabelOffsetChange,
   onRoomResize,
@@ -113,6 +148,8 @@ export function FloorPlanView({
   const placing = !!placeKind && !!onPlaceClick
   const calibrating = !!overlay?.enabled && overlay.calibrating
   const adjustingOverlay = (!!overlay?.enabled && overlay.adjusting) || calibrating
+  // 配置中・平面図の位置合わせ中・線を合わせる中は、部屋などの選択や編集を止める
+  const locked = placing || adjustingOverlay || !!aligning
   const floorsRef = useRef<HTMLDivElement | null>(null)
   const [calibFirst, setCalibFirst] = useState<{ client: Point; local: Point } | null>(null)
 
@@ -197,6 +234,77 @@ export function FloorPlanView({
       img.removeEventListener('load', fit)
     }
   }, [needsFit, onOverlayCalibrated])
+
+  /** 元の平面図の暗い画素の表（画像ごとに1回だけ作る） */
+  const darkMapRef = useRef<{ url: string; map: DarkMap } | null>(null)
+  /** ドラッグ中の通りの情報（ドラッグ開始時に決める） */
+  const gridDragRef = useRef<{ spans: Array<[number, number]>; others: number[] } | null>(null)
+
+  const overlayImage = () => {
+    if (!overlay?.enabled || !overlayUrl) return null
+    const img = floorsRef.current?.querySelector('.source-overlay-image') as HTMLImageElement | null
+    return img && img.complete && img.naturalWidth ? img : null
+  }
+
+  const ensureDarkMap = (img: HTMLImageElement) => {
+    if (darkMapRef.current?.url !== overlayUrl) {
+      const built = darkMapFromImage(img)
+      darkMapRef.current = built && overlayUrl ? { url: overlayUrl, map: built.map } : null
+    }
+    return darkMapRef.current?.map ?? null
+  }
+
+  /**
+   * ドラッグ中の通りの位置を決める。優先順は
+   * ① 近くにある元の平面図の壁の線 ② 間取図のほかの通り ③ そのまま（5mm 刻み）
+   */
+  const snapGridLine = (floorId: string, axis: GridAxis, raw: number): { value: number; snap: GridSnapKind } => {
+    const free = { value: roundHalf(raw), snap: null }
+    const svg = floorsRef.current?.querySelector<SVGSVGElement>(
+      `svg.floor-canvas[data-floor-id="${CSS.escape(floorId)}"]`
+    )
+    const ctm = svg?.getScreenCTM()
+    const [originX, originY] = (svg?.dataset.origin ?? '').split(',').map(Number)
+    const info = gridDragRef.current
+    if (!svg || !ctm || !info || !Number.isFinite(originX) || !Number.isFinite(originY)) return free
+
+    // 間取図の座標 ⇔ 画面座標（拡大縮小と平行移動だけなので軸ごとの1次式）
+    const pxPerUnit = axis === 'x' ? ctm.a : ctm.d
+    const toScreen = (v: number) => (axis === 'x' ? ctm.a * (v + originX) + ctm.e : ctm.d * (v + originY) + ctm.f)
+    const toFloor = (s: number) => (axis === 'x' ? (s - ctm.e) / ctm.a - originX : (s - ctm.f) / ctm.d - originY)
+    const alongToScreen = (v: number) =>
+      axis === 'x' ? ctm.d * (v + originY) + ctm.f : ctm.a * (v + originX) + ctm.e
+
+    const img = overlayImage()
+    const map = img ? ensureDarkMap(img) : null
+    if (img && map) {
+      const r = img.getBoundingClientRect()
+      const k = axis === 'x' ? map.width / r.width : map.height / r.height
+      const kAlong = axis === 'x' ? map.height / r.height : map.width / r.width
+      const start = axis === 'x' ? r.left : r.top
+      const alongStart = axis === 'x' ? r.top : r.left
+      const spans = info.spans.map(
+        ([a, b]) => [(alongToScreen(a) - alongStart) * kAlong, (alongToScreen(b) - alongStart) * kAlong] as [number, number]
+      )
+      const found = findLineNear(
+        map,
+        axis,
+        (toScreen(raw) - start) * k,
+        spans,
+        SNAP_RADIUS_PX * k,
+        mmToSvgUnits(MAX_WALL_THICKNESS_MM) * pxPerUnit * k
+      )
+      if (found != null) return { value: roundHalf(toFloor(found / k + start)), snap: 'image' }
+    }
+
+    const tolerance = LINE_SNAP_PX / pxPerUnit
+    const nearest = info.others.reduce<number | null>(
+      (best, v) => (Math.abs(v - raw) <= tolerance && (best == null || Math.abs(v - raw) < Math.abs(best - raw)) ? v : best),
+      null
+    )
+    if (nearest != null) return { value: nearest, snap: 'line' }
+    return free
+  }
 
   /**
    * 重ねた平面図を、間取図の建物に対して動かないようにする。
@@ -302,6 +410,9 @@ export function FloorPlanView({
         x: overlay.offset.x + (plan.p1.x - movedC1.x) / zoom,
         y: overlay.offset.y + (plan.p1.y - movedC1.y) / zoom,
       },
+      // 平面図は縦横比を保って k 倍にした。建物の横幅は平面図側が dx·k、間取図側が dx·kx なので、
+      // 間取図を横 k/kx 倍・縦 k/ky 倍すれば外形がぴったり重なる
+      planStretch: { sx: k / Math.abs(kx), sy: k / Math.abs(ky) },
     })
     setCalibFirst(null)
   }
@@ -351,6 +462,13 @@ export function FloorPlanView({
       <h2 className="floor-plan-title">{floorPlan.title}</h2>
       {placing ? (
         <p className="edit-mode-hint place-mode-hint">{placeHint(placeKind)}</p>
+      ) : aligning ? (
+        <p className="edit-mode-hint place-mode-hint">
+          オレンジの線（壁の通り）をドラッグして、重ねた平面図の壁に合わせてください。
+          平面図の壁の線に吸い付くと<strong className="align-hint-image">緑</strong>、
+          ほかの通りにそろうと<strong className="align-hint-line">青</strong>になります。線に接する部屋・扉・窓は一緒に動きます。
+          {!overlay?.enabled && '（平面図を重ねると、壁の線に吸い付きます）'}
+        </p>
       ) : (
         onSelect && (
           <p className="edit-mode-hint">
@@ -400,7 +518,7 @@ export function FloorPlanView({
             <FloorCanvas
               key={floor.id}
               floor={floor}
-              editable={editable && !placing && !adjustingOverlay}
+              editable={editable && !locked}
               mergeRoomIds={
                 mergeRoomIds?.floorId === floor.id ? mergeRoomIds.roomIds : undefined
               }
@@ -434,56 +552,79 @@ export function FloorPlanView({
               onPlaceClick={
                 placing ? (pos) => onPlaceClick?.(floor.id, pos) : undefined
               }
+              onGridLineDrag={
+                aligning && onGridLineMove
+                  ? (axis, from, to, phase) => {
+                      if (phase === 'start') {
+                        const lines = collectGridLines(floor).filter((l) => l.axis === axis)
+                        gridDragRef.current = {
+                          spans: lines.find((l) => Math.abs(l.value - from) < 0.5)?.spans ?? [],
+                          others: lines.map((l) => l.value).filter((v) => Math.abs(v - from) >= 0.5),
+                        }
+                        onGridLineMove(floor.id, axis, from, from, 'start')
+                        return null
+                      }
+                      if (phase === 'end') {
+                        gridDragRef.current = null
+                        onGridLineMove(floor.id, axis, from, from, 'end')
+                        return null
+                      }
+                      const snapped = snapGridLine(floor.id, axis, to)
+                      onGridLineMove(floor.id, axis, from, snapped.value, 'move')
+                      return snapped
+                    }
+                  : undefined
+              }
               onRoomSelect={
-                !placing && !adjustingOverlay && onSelect
+                !locked && onSelect
                   ? (roomId, additive) =>
                       onSelect({ kind: 'room', floorId: floor.id, roomId }, { additive })
                   : undefined
               }
               onStairSelect={
-                !placing && !adjustingOverlay && onSelect
+                !locked && onSelect
                   ? (stairId) => onSelect({ kind: 'stair', floorId: floor.id, stairId })
                   : undefined
               }
               onStairMove={
-                onStairMove && editable && !placing && !adjustingOverlay
+                onStairMove && editable && !locked
                   ? (stairId, polygon) =>
                       onStairMove({ kind: 'stair', floorId: floor.id, stairId }, polygon)
                   : undefined
               }
               onWallSelect={
-                !placing && !adjustingOverlay && onSelect
+                !locked && onSelect
                   ? (wallId) => onSelect({ kind: 'wall', floorId: floor.id, wallId })
                   : undefined
               }
               onDoorSelect={
-                !placing && !adjustingOverlay && onSelect
+                !locked && onSelect
                   ? (doorId) => onSelect({ kind: 'door', floorId: floor.id, doorId })
                   : undefined
               }
               onWindowSelect={
-                !placing && !adjustingOverlay && onSelect
+                !locked && onSelect
                   ? (windowId) => onSelect({ kind: 'window', floorId: floor.id, windowId })
                   : undefined
               }
               onFixtureSelect={
-                !placing && !adjustingOverlay && onSelect
+                !locked && onSelect
                   ? (fixtureId) => onSelect({ kind: 'fixture', floorId: floor.id, fixtureId })
                   : undefined
               }
               onTextSelect={
-                !placing && !adjustingOverlay && onSelect
+                !locked && onSelect
                   ? (textId) => onSelect({ kind: 'text', floorId: floor.id, textId })
                   : undefined
               }
               onRoomLabelOffsetChange={
-                !placing && onLabelOffsetChange
+                !locked && onLabelOffsetChange
                   ? (roomId, kind, offset) =>
                       onLabelOffsetChange({ kind: 'room', floorId: floor.id, roomId }, kind, offset)
                   : undefined
               }
               onStairLabelOffsetChange={
-                !placing && onLabelOffsetChange
+                !locked && onLabelOffsetChange
                   ? (stairId, kind, offset) =>
                       onLabelOffsetChange(
                         { kind: 'stair', floorId: floor.id, stairId },
@@ -493,7 +634,7 @@ export function FloorPlanView({
                   : undefined
               }
               onRoomResize={
-                onRoomResize && editable && !placing && !adjustingOverlay
+                onRoomResize && editable && !locked
                   ? (roomId, edge, positionFloorSvg) =>
                       onRoomResize(
                         { kind: 'room', floorId: floor.id, roomId },
@@ -503,13 +644,13 @@ export function FloorPlanView({
                   : undefined
               }
               onRoomMove={
-                onRoomMove && editable && !placing && !adjustingOverlay
+                onRoomMove && editable && !locked
                   ? (roomId, polygon) =>
                       onRoomMove({ kind: 'room', floorId: floor.id, roomId }, polygon)
                   : undefined
               }
               onWallEndpointMove={
-                onWallEndpointMove && editable && !placing && !adjustingOverlay
+                onWallEndpointMove && editable && !locked
                   ? (wallId, endpoint, position) =>
                       onWallEndpointMove(
                         { kind: 'wall', floorId: floor.id, wallId },
@@ -519,19 +660,19 @@ export function FloorPlanView({
                   : undefined
               }
               onWallMove={
-                onWallMove && editable && !placing && !adjustingOverlay
+                onWallMove && editable && !locked
                   ? (wallId, start, end) =>
                       onWallMove({ kind: 'wall', floorId: floor.id, wallId }, start, end)
                   : undefined
               }
               onDoorMove={
-                onDoorMove && editable && !placing && !adjustingOverlay
+                onDoorMove && editable && !locked
                   ? (doorId, position) =>
                       onDoorMove({ kind: 'door', floorId: floor.id, doorId }, position)
                   : undefined
               }
               onWindowEndpointMove={
-                onWindowEndpointMove && editable && !placing && !adjustingOverlay
+                onWindowEndpointMove && editable && !locked
                   ? (windowId, endpoint, position) =>
                       onWindowEndpointMove(
                         { kind: 'window', floorId: floor.id, windowId },
@@ -541,19 +682,19 @@ export function FloorPlanView({
                   : undefined
               }
               onWindowMove={
-                onWindowMove && editable && !placing && !adjustingOverlay
+                onWindowMove && editable && !locked
                   ? (windowId, start, end) =>
                       onWindowMove({ kind: 'window', floorId: floor.id, windowId }, start, end)
                   : undefined
               }
               onFixtureMove={
-                onFixtureMove && editable && !placing && !adjustingOverlay
+                onFixtureMove && editable && !locked
                   ? (fixtureId, position) =>
                       onFixtureMove({ kind: 'fixture', floorId: floor.id, fixtureId }, position)
                   : undefined
               }
               onFixtureResize={
-                onFixtureResize && editable && !placing && !adjustingOverlay
+                onFixtureResize && editable && !locked
                   ? (fixtureId, corner, position) =>
                       onFixtureResize(
                         { kind: 'fixture', floorId: floor.id, fixtureId },
@@ -563,7 +704,7 @@ export function FloorPlanView({
                   : undefined
               }
               onTextMove={
-                onTextMove && editable && !placing && !adjustingOverlay
+                onTextMove && editable && !locked
                   ? (textId, position) =>
                       onTextMove({ kind: 'text', floorId: floor.id, textId }, position)
                   : undefined
