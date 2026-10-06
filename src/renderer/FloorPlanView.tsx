@@ -153,6 +153,52 @@ export function FloorPlanView({
   }
 
   /**
+   * 重ねる操作を始めたとき（needsFit）は、平面図が間取図の建物をちょうど覆う縮尺と位置にしておく。
+   * 平面図のどこに建物が描かれているかまでは分からないので、おおまかな初期値。細かくは「2点で合わせる」で。
+   */
+  const needsFit = !!overlay?.enabled && !!overlay.needsFit && !!overlayUrl
+  useEffect(() => {
+    if (!needsFit || !onOverlayCalibrated) return
+    const container = floorsRef.current
+    const img = container?.querySelector('.source-overlay-image') as HTMLImageElement | null
+    if (!container || !img) return
+
+    let cancelled = false
+    const fit = () => {
+      if (cancelled) return
+      const plan = planRectOnScreen()
+      const imgW = img.naturalWidth
+      const imgH = img.naturalHeight
+      if (!plan || !imgW || !imgH) return
+      const zoom = currentZoom()
+      const rect = container.getBoundingClientRect()
+      const planW = (plan.p2.x - plan.p1.x) / zoom
+      const planH = (plan.p2.y - plan.p1.y) / zoom
+      const scale = Math.max(planW / imgW, planH / imgH)
+      if (!(scale > 0) || !Number.isFinite(scale)) return
+      // 画像は枠の中心に置かれるので、間取図の建物の中心との差をずらし量にする
+      const planCenter = {
+        x: ((plan.p1.x + plan.p2.x) / 2 - rect.left) / zoom,
+        y: ((plan.p1.y + plan.p2.y) / 2 - rect.top) / zoom,
+      }
+      onOverlayCalibrated({
+        scaleX: scale,
+        scaleY: scale,
+        offset: {
+          x: planCenter.x - container.offsetWidth / 2,
+          y: planCenter.y - container.offsetHeight / 2,
+        },
+      })
+    }
+    if (img.complete && img.naturalWidth) fit()
+    else img.addEventListener('load', fit, { once: true })
+    return () => {
+      cancelled = true
+      img.removeEventListener('load', fit)
+    }
+  }, [needsFit, onOverlayCalibrated])
+
+  /**
    * 重ねた平面図の上で建物の左上・右下をクリックしてもらい、
    * その2点が間取図の建物の角に重なるよう、縦横の倍率と位置を求める。
    */

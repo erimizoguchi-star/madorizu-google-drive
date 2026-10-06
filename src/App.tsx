@@ -304,7 +304,7 @@ function App() {
             <span className="property-link__hint">
               物件情報管理システムから開きました。
               {propertyLink.uploadUrl
-                ? '仕上げたら、書き出しの「物件情報管理システムへ送る」を押すと、広告シートの「間取り図」の枠に入ります。'
+                ? '仕上げたら、書き出しの「物件へ送る」を押すと、広告シートの「間取り図」の枠に入ります。'
                 : 'できあがった画像は、広告シートの「間取り図」の枠に入れてください。'}
             </span>
           </div>
@@ -560,6 +560,7 @@ function App() {
                     scaleY: scale,
                     offset,
                     calibrating: false,
+                    needsFit: false,
                   }))
                 }}
                 selected={selected}

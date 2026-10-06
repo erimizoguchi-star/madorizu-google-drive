@@ -43,8 +43,8 @@
 }
 
 .sidebar {
-  width: 260px;
-  min-width: 260px;
+  width: 300px;
+  min-width: 300px;
   min-height: 0;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
@@ -1074,10 +1074,10 @@
   display: none;
 }
 
-/* パネルは出したまま少し細くして、間取図側に幅を回す */
+/* パネルは出したまま少し細くして、間取図側に幅を回す（入力欄が窮屈にならない幅は残す） */
 .app-wide-edit .sidebar:not(.sidebar-collapsed) {
-  width: 220px;
-  min-width: 220px;
+  width: 260px;
+  min-width: 260px;
   padding: 1rem 0.85rem;
 }
 

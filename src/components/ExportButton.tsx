@@ -86,10 +86,10 @@ export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport, 
       {sendTo && (
         <div className="export-send">
           <button type="button" onClick={() => void send()} disabled={sendState.busy} className="btn btn-primary">
-            {sendState.busy ? '送信中…' : '物件情報管理システムへ送る'}
+            {sendState.busy ? '送信中…' : sendState.ok ? '物件へもう一度送る' : '物件へ送る'}
           </button>
           <p className={`export-send__note${sendState.message ? (sendState.ok ? ' is-ok' : ' is-error') : ''}`}>
-            {sendState.message ?? `「${sendTo.propertyName}」の広告シート（間取り図の枠）に直接入ります。`}
+            {sendState.message ?? `「${sendTo.propertyName}」の広告シートの「間取り図」の枠に直接入ります。`}
           </p>
         </div>
       )}

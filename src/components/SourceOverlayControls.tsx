@@ -13,6 +13,11 @@ export interface SourceOverlayState {
   adjusting: boolean
   /** true の間は、平面図側の基準点を2つクリックして自動で合わせる */
   calibrating: boolean
+  /**
+   * true のとき、表示側が平面図の大きさを間取図に合わせて縮尺と位置を自動で決める（決めたら false に戻す）。
+   * 重ねる操作を始めたときやリセットしたときに立てる
+   */
+  needsFit?: boolean
 }
 
 export const DEFAULT_SOURCE_OVERLAY: SourceOverlayState = {
@@ -23,6 +28,7 @@ export const DEFAULT_SOURCE_OVERLAY: SourceOverlayState = {
   offset: { x: 0, y: 0 },
   adjusting: false,
   calibrating: false,
+  needsFit: false,
 }
 
 interface SourceOverlayControlsProps {
@@ -50,7 +56,7 @@ export function SourceOverlayControls({
           type="checkbox"
           checked={state.enabled}
           onChange={(e) =>
-            patch({ enabled: e.target.checked, adjusting: false, calibrating: false })
+            patch({ enabled: e.target.checked, adjusting: false, calibrating: false, needsFit: e.target.checked })
           }
         />
         元の平面図を重ねる
@@ -119,6 +125,7 @@ export function SourceOverlayControls({
                 offset: { x: 0, y: 0 },
                 adjusting: false,
                 calibrating: false,
+                needsFit: true,
               })
             }
           >
@@ -142,7 +149,7 @@ export function SourceOverlayControls({
               '平面図をドラッグして動かしてください（この間は間取図の編集は止まります）'
             ) : (
               <>
-                重ねているのは「{fileName}」です。縮尺は縦横比を保ったまま変更できます。出力（PNG /
+                重ねているのは「{fileName}」です。最初は間取図の大きさにおおまかに合わせてあります。細かく合わせるには「2点で合わせる」が確実です。縮尺は縦横比を保ったまま変更できます。出力（PNG /
                 SVG / PDF）には含まれません。
               </>
             )}
