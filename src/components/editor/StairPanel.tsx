@@ -143,37 +143,49 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
                 </option>
               ))}
             </select>
-            <p className="editor-field-hint">矢印と段差線の向きを変更します。</p>
+            <p className="editor-field-hint">
+              上る向きです（L字・U字は最初に上る向き。L字・下で曲がる形は曲がったあとの向き）。
+            </p>
           </div>
 
           <div className="editor-field">
-            <span className="editor-offset-label">表示文字（UP / DOWN）</span>
+            <span className="editor-offset-label">この階での表記（UP / DN）</span>
             <div className="editor-swing-grid">
               <button
                 type="button"
                 className={`btn editor-swing-btn ${currentStair.stair.direction !== 'down' ? 'active' : ''}`}
-                onClick={() => handleStairField({ direction: 'up', name: 'UP' })}
+                onClick={() => handleStairField({ direction: 'up' })}
               >
                 UP
               </button>
               <button
                 type="button"
                 className={`btn editor-swing-btn ${currentStair.stair.direction === 'down' ? 'active' : ''}`}
-                onClick={() => handleStairField({ direction: 'down', name: 'DOWN' })}
+                onClick={() => handleStairField({ direction: 'down' })}
               >
-                DOWN
+                DN
               </button>
             </div>
             <p className="editor-field-hint">
-              間取図上の表記です。1階は通常 UP、2階は通常 DOWN にします。
+              1階は UP（上り始めから矢印）、2階は DN（上り終わり側から下りの矢印）にします。上り方向は変わりません。
             </p>
+            {currentStair.stair.direction !== 'down' && (
+              <label className="editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={!!currentStair.stair.cutLine}
+                  onChange={(e) => handleStairField({ cutLine: e.target.checked })}
+                />
+                破断線を入れる（先の段は破線、矢印は破断線まで）
+              </label>
+            )}
             <label className="editor-checkbox">
               <input
                 type="checkbox"
                 checked={currentStair.stair.showName !== false}
                 onChange={(e) => handleStairField({ showName: e.target.checked })}
               />
-              UP / DOWN を表示
+              UP / DN を表示
             </label>
           </div>
 

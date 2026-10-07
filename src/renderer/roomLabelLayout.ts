@@ -1,6 +1,7 @@
 import type { Point, Room, RoomType, Stair } from '../types/floorPlan'
 import { isAreaJoHiddenByType, toJapaneseRoomName } from '../constants/roomTypes'
 import { LABEL, mm2ToJo, polygonArea } from './styles'
+import { computeStairGraphics } from './stairGraphics'
 
 const SVG_MM = 10
 const LINE_LEADING = 1.28
@@ -37,6 +38,8 @@ export interface LabelSource {
   nameLabelOffset?: Point
   areaLabelOffset?: Point
   noteLabelOffset?: Point
+  /** 文字を置く基準点。省略時は形の中央（階段は矢印の始点の横） */
+  anchor?: Point
 }
 
 function polygonBounds(points: Point[]) {
@@ -102,11 +105,11 @@ export function roomToLabelSource(room: Room): LabelSource {
   }
 }
 
-export function stairDirectionLabel(stair: Pick<Stair, 'direction' | 'name'>): 'UP' | 'DOWN' {
-  // 明示的に DOWN のときだけ DOWN。それ以外（up / 省略）は UP
-  if (stair.direction === 'down') return 'DOWN'
-  // 旧データで name だけ "DOWN" になっている場合の互換
-  if (stair.name && /^down$/i.test(stair.name.trim())) return 'DOWN'
+/** 階段の表記。間取図の書き方に合わせて UP / DN */
+export function stairDirectionLabel(stair: Pick<Stair, 'direction' | 'name'>): 'UP' | 'DN' {
+  if (stair.direction === 'down') return 'DN'
+  // 旧データで name だけ "DOWN" / "DN" になっている場合の互換
+  if (stair.name && /^(down|dn)$/i.test(stair.name.trim())) return 'DN'
   return 'UP'
 }
 
@@ -119,6 +122,7 @@ export function stairToLabelSource(stair: Stair): LabelSource {
     showAreaJo: false,
     labelFontSize: stair.labelFontSize,
     nameLabelOffset: stair.nameLabelOffset,
+    anchor: computeStairGraphics(stair).labelPoint,
   }
 }
 
@@ -130,7 +134,7 @@ export function computeLabelLayout(source: LabelSource): RoomLabelLayout | null 
   const visibleLineCount = (showName ? 1 : 0) + (showAreaJo ? 1 : 0) + (hasNote ? 1 : 0)
   if (visibleLineCount === 0) return null
 
-  const anchor = labelAnchor(source.polygon)
+  const anchor = source.anchor ?? labelAnchor(source.polygon)
   const areaText = formatJo(resolveAreaJo(source))
   const { nameSize, areaSize, noteSize } = resolveFontSizes(source)
 

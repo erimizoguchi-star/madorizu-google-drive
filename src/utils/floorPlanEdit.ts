@@ -1,5 +1,4 @@
 import type { Door, DoorKind, Fixture, FixtureType, Floor, FloorPlan, HiddenWall, Point, Room, RoomFillPattern, Stair, StairLayout, StairOrientation, TextLabel, Wall, Window, WindowKind } from '../types/floorPlan'
-import { orientationToDirection } from '../constants/stairOptions'
 import { doorKindLabel } from '../constants/doorOptions'
 import { windowKindLabel } from '../constants/windowOptions'
 import { defaultFixtureSizeMm, fixtureTypeLabel } from '../constants/fixtureOptions'
@@ -300,6 +299,8 @@ export function updateStair(
     layout?: StairLayout
     orientation?: StairOrientation | null
     direction?: 'up' | 'down'
+    /** 破断線を入れる（1階の描き方） */
+    cutLine?: boolean
     widthMm?: number
     lengthMm?: number
     /** 平行移動（SVG単位） */
@@ -325,11 +326,14 @@ export function updateStair(
         }
         if (patch.layout !== undefined) updated.layout = patch.layout
         if (patch.orientation === null) delete updated.orientation
-        else if (patch.orientation !== undefined) {
-          updated.orientation = patch.orientation
-          updated.direction = orientationToDirection(patch.orientation)
+        // 上り方向と UP/DN は別のもの（以前は上り方向を左・下にすると DN に変わっていた）
+        else if (patch.orientation !== undefined) updated.orientation = patch.orientation
+        if (patch.direction !== undefined) {
+          updated.direction = patch.direction
+          updated.name = patch.direction === 'down' ? 'DN' : 'UP'
         }
-        if (patch.direction !== undefined) updated.direction = patch.direction
+        if (patch.cutLine === true) updated.cutLine = true
+        else if (patch.cutLine === false) delete updated.cutLine
         if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
           updated = withStairWidth(updated, patch.widthMm)
         } else if (patch.layout !== undefined || patch.orientation !== undefined || patch.orientation === null) {
@@ -1076,7 +1080,7 @@ export function listAllEditableElements(
     floor.stairs.map((stair) => ({
       key: `stair:${floor.id}:${stair.id}`,
       ref: { kind: 'stair' as const, floorId: floor.id, stairId: stair.id },
-      label: `${floor.label} / 階段 ${stair.direction === 'down' ? 'DOWN' : 'UP'}`,
+      label: `${floor.label} / 階段 ${stair.direction === 'down' ? 'DN' : 'UP'}`,
     }))
   )
   const walls = floorPlan.floors.flatMap((floor) =>

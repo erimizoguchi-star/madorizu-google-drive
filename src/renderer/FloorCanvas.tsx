@@ -199,7 +199,9 @@ export function FloorCanvas({
     ? []
     : selectedRoomId != null
       ? (transformedFloor.rooms.find((r) => r.id === selectedRoomId)?.polygon ?? [])
-      : selectedDoorId != null
+      : selectedStairId != null
+        ? (transformedFloor.stairs.find((s) => s.id === selectedStairId)?.polygon ?? [])
+        : selectedDoorId != null
       ? (() => {
           const door = transformedFloor.doors.find((d) => d.id === selectedDoorId)
           return door ? doorPaintExtentPoints(door) : []

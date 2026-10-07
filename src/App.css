@@ -1541,6 +1541,13 @@
   width: 4.5rem;
 }
 
+.selection-toolbar__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
 .selection-toolbar__btn {
   padding: 0.3rem 0.6rem;
   border: 1px solid var(--color-border);

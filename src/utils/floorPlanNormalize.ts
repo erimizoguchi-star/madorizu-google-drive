@@ -512,7 +512,15 @@ function fitWindowsToWalls(floor: Floor): Floor {
   return { ...floor, windows }
 }
 
-const STAIR_LAYOUTS: StairLayout[] = ['straight', 'turn-right', 'turn-left']
+const STAIR_LAYOUTS: StairLayout[] = [
+  'straight',
+  'turn-right',
+  'turn-left',
+  'turn-right-start',
+  'turn-left-start',
+  'u-right',
+  'u-left',
+]
 const STAIR_ORIENTATIONS: StairOrientation[] = ['up', 'down', 'left', 'right']
 
 function sanitizeStairLayout(value: unknown): StairLayout | undefined {
@@ -538,7 +546,7 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
   const base: Stair = {
     ...stair,
     id: stair.id || `stair-${index}`,
-    name: stair.direction === 'down' ? 'DOWN' : 'UP',
+    name: stair.direction === 'down' ? 'DN' : 'UP',
     direction: stair.direction === 'down' ? 'down' : 'up',
     widthMm,
     ...(layout ? { layout } : {}),

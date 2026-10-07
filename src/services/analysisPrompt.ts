@@ -65,8 +65,8 @@ ld, kitchen, bathroom, toilet, washroom, japanese, western, hallway, entrance, s
 - 階段室は rooms に入れず stairs 配列へ（polygon + direction: up/down + name）
 - 階段の表示文字は direction に従い UP（上り）または DOWN（下り）。「階段」とは書かない
 - 階段幅 widthMm は 910（省略時も910）。上り方向に垂直な方向の寸法。ポリゴン幅もこれに合わせる
-- 階段の layout: straight（直線）| turn-right（右回り）| turn-left（左回り）。省略時 straight
-- 階段の orientation: up | down | left | right（上り方向）。省略時は形状から推定
+- 階段の layout: straight（直線）| turn-right / turn-left（L字・上り終わりで右／左へ曲がる）| turn-right-start / turn-left-start（L字・上り始めで右／左へ曲がる）| u-right / u-left（U字・折り返し、右回り／左回り）。省略時 straight
+- 階段の orientation: up | down | left | right（上り方向。L字・U字は最初に上る向き、L字・上り始めで曲がる形は曲がったあとの向き）。direction が down（2階の DN）でも orientation は上り方向を書く。省略時は形状から推定
 - hallway と stairs には areaJo を含めない
 
 ## 設備（fixtures）

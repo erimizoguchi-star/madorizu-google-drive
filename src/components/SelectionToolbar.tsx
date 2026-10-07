@@ -1,15 +1,19 @@
 import { useEffect, useRef } from 'react'
 import { DOOR_KIND_OPTIONS, DOOR_KINDS_WITH_SWING } from '../constants/doorOptions'
+import { mirrorStairLayout, nextStairOrientation, STAIR_LAYOUT_OPTIONS } from '../constants/stairOptions'
+import { getStairBounds, resolveStairLayout, resolveStairOrientation } from '../renderer/stairGraphics'
 import { ROOM_TYPE_OPTIONS, isAreaJoHiddenByType } from '../constants/roomTypes'
 import { WINDOW_KIND_OPTIONS, normalizeWindowKind } from '../constants/windowOptions'
-import type { DoorKind, FloorPlan, RoomType, WindowKind } from '../types/floorPlan'
+import type { DoorKind, FloorPlan, RoomType, StairLayout, WindowKind } from '../types/floorPlan'
 import {
   cycleDoorOrientation,
   findDoor,
   findRoom,
+  findStair,
   findWindow,
   updateDoor,
   updateRoom,
+  updateStair,
   updateWindow,
   type SelectedElementRef,
 } from '../utils/floorPlanEdit'
@@ -60,7 +64,78 @@ export function SelectionToolbar({
   if (selected.kind === 'window') {
     return <WindowToolbar floorPlan={floorPlan} selected={selected} onChange={onChange} onDelete={onDelete} />
   }
+  if (selected.kind === 'stair') {
+    return <StairToolbar floorPlan={floorPlan} selected={selected} onChange={onChange} onDelete={onDelete} />
+  }
   return null
+}
+
+function StairToolbar({
+  floorPlan,
+  selected,
+  onChange,
+  onDelete,
+}: SelectionToolbarProps & { selected: Extract<SelectedElementRef, { kind: 'stair' }> }) {
+  const found = findStair(floorPlan, selected)
+  if (!found) return null
+  const { stair } = found
+  const layout = resolveStairLayout(stair)
+  const orientation = resolveStairOrientation(stair, getStairBounds(stair.polygon))
+  const down = stair.direction === 'down'
+  return (
+    <div className="selection-toolbar" data-no-pan>
+      <select
+        aria-label="階段の形"
+        value={layout}
+        onChange={(e) => onChange((prev) => updateStair(prev, selected, { layout: e.target.value as StairLayout }))}
+      >
+        {STAIR_LAYOUT_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="selection-toolbar__btn"
+        title="上る向きを時計回りに 90° ずつ変えます"
+        onClick={() => onChange((prev) => updateStair(prev, selected, { orientation: nextStairOrientation(orientation) }))}
+      >
+        ↻ 向き
+      </button>
+      {layout !== 'straight' && (
+        <button
+          type="button"
+          className="selection-toolbar__btn"
+          title="曲がる向き（右回り・左回り）を反対にします"
+          onClick={() => onChange((prev) => updateStair(prev, selected, { layout: mirrorStairLayout(layout) }))}
+        >
+          ⇄ 回る向き
+        </button>
+      )}
+      <button
+        type="button"
+        className="selection-toolbar__btn"
+        title="1階は UP（上り始めから矢印）、2階は DN（上り終わり側から下りの矢印）"
+        onClick={() => onChange((prev) => updateStair(prev, selected, { direction: down ? 'up' : 'down' }))}
+      >
+        {down ? 'DN → UP' : 'UP → DN'}
+      </button>
+      {!down && (
+        <label className="selection-toolbar__check" title="1階の描き方。破断線より先の段は破線、矢印は破断線まで">
+          <input
+            type="checkbox"
+            checked={!!stair.cutLine}
+            onChange={(e) => onChange((prev) => updateStair(prev, selected, { cutLine: e.target.checked }))}
+          />
+          破断線
+        </label>
+      )}
+      <button type="button" className="selection-toolbar__btn is-danger" title="削除（Delete キー）" onClick={onDelete}>
+        削除
+      </button>
+    </div>
+  )
 }
 
 /** 種類の選択肢は短い名前にする（「LD（リビング・ダイニング）」→「LD」） */

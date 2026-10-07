@@ -145,7 +145,21 @@ export interface Fixture {
   angle?: number
 }
 
-export type StairLayout = 'straight' | 'turn-right' | 'turn-left'
+/**
+ * 段の形状。
+ * - straight: 直線
+ * - turn-right / turn-left: L字・上り終わりの側で曲がる（右回り＝上りながら右へ）
+ * - turn-right-start / turn-left-start: L字・上り始めの側で曲がる
+ * - u-right / u-left: U字（折り返し）
+ */
+export type StairLayout =
+  | 'straight'
+  | 'turn-right'
+  | 'turn-left'
+  | 'turn-right-start'
+  | 'turn-left-start'
+  | 'u-right'
+  | 'u-left'
 
 /** 上り方向（SVG座標: y が小さいほど上） */
 export type StairOrientation = 'up' | 'down' | 'left' | 'right'
@@ -153,15 +167,20 @@ export type StairOrientation = 'up' | 'down' | 'left' | 'right'
 export interface Stair {
   id: string
   polygon: Point[]
-  /** @deprecated orientation を優先。未設定時の上り/下り表示用 */
+  /**
+   * この階での表記。up = この階から上る（1階・UP）、down = この階から下りる（2階・DN）。
+   * down のときは、上り終わり側から下りの向きに矢印を描く
+   */
   direction: 'up' | 'down'
   /** 段の形状: 直線 / 右回り / 左回り */
   layout?: StairLayout
-  /** 上り方向 */
+  /** 上り方向（L字・U字は最初に上る向き。L字・上り始めで曲がる形は、曲がったあとの向き） */
   orientation?: StairOrientation
+  /** 破断線を入れる（1階の描き方。破断線より先の段は破線、矢印は破断線まで） */
+  cutLine?: boolean
   /** 階段幅 mm（省略時 910） */
   widthMm?: number
-  /** 表示ラベル用。省略時は direction から UP / DOWN を出す */
+  /** 表示ラベル用。省略時は direction から UP / DN を出す */
   name?: string
   showName?: boolean
   labelFontSize?: number
