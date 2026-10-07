@@ -8,14 +8,17 @@ export const WINDOW_KIND_OPTIONS: { value: WindowKind; label: string; hint: stri
   { value: 'folding', label: '折れ戸', hint: '中央で折り畳む' },
   { value: 'casement', label: '片開き戸', hint: '丁番で片側へ開く' },
   { value: 'double_casement', label: '両開き戸', hint: '左右2枚が開く' },
+  { value: 'slide_out', label: '縦すべり出し窓', hint: '縦の軸が端から少し内側へすべりながら外へ開く' },
+  { value: 'awning', label: '横すべり出し窓', hint: '上を軸に外へ押し出して開く（外側に破線の四角と三角）' },
+  { value: 'fix', label: 'FIX窓（はめ殺し）', hint: '開かないガラス窓' },
+  { value: 'fix_casement', label: 'FIX＋両端すべり出し', hint: '中央は開かず、両端が外へ開く連窓' },
 ]
 
 /** 旧データ互換 */
 const LEGACY_WINDOW_KIND: Record<string, WindowKind> = {
-  fixed: 'sliding',
+  fixed: 'fix',
   floor: 'sliding',
   high: 'sliding',
-  awning: 'casement',
   double_sliding: 'sliding',
 }
 

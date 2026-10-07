@@ -52,7 +52,7 @@ function along(
 
 /**
  * 参考チャート準拠の窓記号
- * （引き違い戸 / 片引き戸 / 引き込み戸 / 折れ戸 / 片開き戸 / 両開き戸）
+ * （引き違い戸 / 片引き戸 / 引き込み戸 / 折れ戸 / 片開き戸 / 両開き戸 / 横すべり出し / FIX / FIX＋両端すべり出し）
  */
 export function WindowRenderer({ window: win, selected, selectable, onSelect }: WindowRendererProps) {
   const kind: WindowKind = normalizeWindowKind(win.kind)
@@ -225,6 +225,106 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
             />
             <path
               d={`M ${meet.x} ${meet.y} A ${half} ${half} 0 0 ${sweep} ${rightTip.x} ${rightTip.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={detailW}
+              pointerEvents="none"
+            />
+          </>
+        )
+      }
+      case 'fix': {
+        // FIX窓（はめ殺し）: 開閉の記号はなく、ガラスの線と両端の印だけ
+        return (
+          <>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={lineW} pointerEvents="none" />
+            {endTicks(x1, y1, nx, ny, color, detailW, 1.15)}
+            {endTicks(x2, y2, nx, ny, color, detailW, 1.15)}
+          </>
+        )
+      }
+      case 'awning': {
+        // 横すべり出し窓: ガラスの線＋外へ押し出した障子を破線の四角で描く（上を軸に開くので平面では破線）
+        const depth = Math.min(Math.max(len * 0.5, 15), 40)
+        const face = WALL_PUNCH / 2
+        const p1 = along(x1, y1, 0, 0, 0, nx, ny, face)
+        const p2 = along(x2, y2, 0, 0, 0, nx, ny, face)
+        const p3 = along(x2, y2, 0, 0, 0, nx, ny, face + depth)
+        const p4 = along(x1, y1, 0, 0, 0, nx, ny, face + depth)
+        // 四角の中の破線の三角: 内側（壁側）の2つの角から、外側の辺の中央へ
+        const apex = along(midX, midY, 0, 0, 0, nx, ny, face + depth)
+        return (
+          <>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={lineW} pointerEvents="none" />
+            {endTicks(x1, y1, nx, ny, color, detailW, 1.15)}
+            {endTicks(x2, y2, nx, ny, color, detailW, 1.15)}
+            <polyline
+              points={`${p1.x},${p1.y} ${p4.x},${p4.y} ${p3.x},${p3.y} ${p2.x},${p2.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={detailW}
+              strokeDasharray="4 3"
+              pointerEvents="none"
+            />
+            <polyline
+              points={`${p1.x},${p1.y} ${apex.x},${apex.y} ${p2.x},${p2.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={detailW}
+              strokeDasharray="3 2.5"
+              pointerEvents="none"
+            />
+          </>
+        )
+      }
+      case 'slide_out': {
+        // 縦すべり出し窓: 軸が端から少し内側へすべって外へ開く。開いた障子の線と、開く軌跡の破線の弧
+        const pivot = along(x1, y1, ux, uy, len * 0.15)
+        const sash = len * 0.85
+        // 外へ 60° 開いた障子の先
+        const open = { x: pivot.x + (ux * 0.5 + nx * 0.866) * sash, y: pivot.y + (uy * 0.5 + ny * 0.866) * sash }
+        return (
+          <>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={detailW} pointerEvents="none" />
+            {endTicks(x1, y1, nx, ny, color, detailW, 1.15)}
+            {endTicks(x2, y2, nx, ny, color, detailW, 1.15)}
+            <line x1={pivot.x} y1={pivot.y} x2={open.x} y2={open.y} stroke={color} strokeWidth={lineW} pointerEvents="none" />
+            <path
+              d={`M ${x2} ${y2} A ${sash} ${sash} 0 0 ${sweep} ${open.x} ${open.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={detailW}
+              strokeDasharray="3 2.5"
+              pointerEvents="none"
+            />
+          </>
+        )
+      }
+      case 'fix_casement': {
+        // FIX＋両端すべり出し: 中央は開かないガラス、両端の障子が外へ開く（障子の線と1/4円弧）
+        const leaf = Math.min(Math.max(len * 0.2, 25), 45, len * 0.3)
+        const leftClosed = along(x1, y1, ux, uy, leaf)
+        const leftOpen = along(x1, y1, 0, 0, 0, nx, ny, leaf)
+        const rightClosed = along(x2, y2, ux, uy, -leaf)
+        const rightOpen = along(x2, y2, 0, 0, 0, nx, ny, leaf)
+        return (
+          <>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={detailW} pointerEvents="none" />
+            {endTicks(x1, y1, nx, ny, color, detailW, 1.15)}
+            {endTicks(x2, y2, nx, ny, color, detailW, 1.15)}
+            {endTicks(leftClosed.x, leftClosed.y, nx, ny, color, detailW, 0.9)}
+            {endTicks(rightClosed.x, rightClosed.y, nx, ny, color, detailW, 0.9)}
+            <line x1={x1} y1={y1} x2={leftOpen.x} y2={leftOpen.y} stroke={color} strokeWidth={lineW} pointerEvents="none" />
+            <line x1={x2} y1={y2} x2={rightOpen.x} y2={rightOpen.y} stroke={color} strokeWidth={lineW} pointerEvents="none" />
+            <path
+              d={`M ${leftClosed.x} ${leftClosed.y} A ${leaf} ${leaf} 0 0 ${sweep} ${leftOpen.x} ${leftOpen.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={detailW}
+              pointerEvents="none"
+            />
+            <path
+              d={`M ${rightClosed.x} ${rightClosed.y} A ${leaf} ${leaf} 0 0 ${1 - sweep} ${rightOpen.x} ${rightOpen.y}`}
               fill="none"
               stroke={color}
               strokeWidth={detailW}

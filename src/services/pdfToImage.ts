@@ -120,3 +120,59 @@ export async function prepareFloorPlanInput(file: File, pageNumber = 1): Promise
 
   throw new Error('対応形式: PNG, JPG, WebP, PDF')
 }
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('図面の画像を読み込めませんでした'))
+    img.src = url
+  })
+}
+
+/** 回した回数（右回りに 90° ずつ）を 0〜3 にそろえる */
+export function normalizeQuarterTurns(turns: number): number {
+  return ((Math.round(turns) % 4) + 4) % 4
+}
+
+/**
+ * 読み込んだ図面を右回りに 90° × turns 回す。
+ * 横向きの図面は、AI が読み取る前に正しい向きにしておく（文字や寸法が横倒しだと読み違えやすい）。
+ * 回した画像は、そのまま重ね合わせにも使う。
+ */
+export async function rotatePreparedInput(
+  input: PreparedFloorPlanInput,
+  turns: number
+): Promise<PreparedFloorPlanInput> {
+  const quarter = normalizeQuarterTurns(turns)
+  if (quarter === 0) return input
+  const img = await loadImage(input.previewUrl)
+  const w = img.naturalWidth
+  const h = img.naturalHeight
+  const canvas = document.createElement('canvas')
+  canvas.width = quarter % 2 ? h : w
+  canvas.height = quarter % 2 ? w : h
+  const context = canvas.getContext('2d')
+  if (!context) {
+    throw new Error('Canvas の初期化に失敗しました')
+  }
+  // JPEG は透明を持てないので、回したときに背景が黒くならないよう白で塗っておく
+  context.fillStyle = '#fff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.translate(canvas.width / 2, canvas.height / 2)
+  context.rotate((quarter * Math.PI) / 2)
+  context.drawImage(img, -w / 2, -h / 2)
+
+  // 写真やスキャンの JPEG を PNG にすると何倍にも大きくなるので、元の形式に合わせる
+  const type = input.analysisFile.type === 'image/jpeg' ? 'image/jpeg' : 'image/png'
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('図面を回せませんでした'))), type, 0.92)
+  })
+  const ext = type === 'image/jpeg' ? 'jpg' : 'png'
+  const baseName = input.analysisFile.name.replace(/\.[^.]+$/, '') || 'floor-plan'
+  return {
+    ...input,
+    previewUrl: URL.createObjectURL(blob),
+    analysisFile: new File([blob], `${baseName}-rot${quarter * 90}.${ext}`, { type }),
+  }
+}

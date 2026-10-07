@@ -79,26 +79,31 @@ export const TATAMI = {
   gridWidth: 0.55,
 }
 
-/** 薄いベージュ床＋細い縦ピンストライプ（参考図のフローリング） */
+/**
+ * 薄いベージュ床＋細い縦ピンストライプ（参考図のフローリング）。
+ * 以前は 0.42・薄さ 50%・床に近い色で、画面でも出力でもほとんど見えなかったので、少し太く濃くし、間隔を広げた
+ */
 export const WOOD_FLOORING = {
-  spacing: 5.2,
-  color: '#C5C0B6',
-  width: 0.42,
-  opacity: 0.5,
+  spacing: 7.5,
+  color: '#B8B0A2',
+  width: 0.6,
+  opacity: 0.8,
   /** vertical = 上下方向の板目（参考図） */
   direction: 'vertical' as 'vertical' | 'horizontal',
 }
 
+/** タイルの目地（300mm 角）。以前は 680mm 間隔の薄い灰色で目立たなかった */
 export const TILE = {
-  spacing: 68,
-  lineWidth: 0.55,
-  porch: { grout: '#D5D5D5', opacity: 0.75 },
-  entrance: { grout: '#CECECE', opacity: 0.65 },
+  spacing: 30,
+  lineWidth: 0.6,
+  porch: { grout: '#BDBDBD', opacity: 0.9 },
+  entrance: { grout: '#B8B8B8', opacity: 0.85 },
 }
 
 export const ATTIC_HATCH = {
-  color: '#D0CCC4',
+  color: '#BDB6AA',
   spacing: 7,
+  width: 0.6,
 }
 
 export const FIXTURE = {

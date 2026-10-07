@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { stairRect } from '../utils/stairShape'
 import type { Point, Stair } from '../types/floorPlan'
 import { STAIR, pointsToPath } from './styles'
 import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
@@ -13,6 +14,8 @@ import {
 
 interface StairRendererProps {
   stair: Stair
+  /** 切り抜き（clipPath）の id を階ごとに分けるための接頭辞。階段の id は階をまたいで重なるため */
+  clipScope?: string
   selected?: boolean
   selectable?: boolean
   editable?: boolean
@@ -26,6 +29,7 @@ interface StairRendererProps {
 
 export function StairRenderer({
   stair,
+  clipScope = '',
   selected,
   selectable,
   editable,
@@ -35,9 +39,10 @@ export function StairRenderer({
   onMove,
   onLabelOffsetChange,
 }: StairRendererProps) {
-  const path = pointsToPath(stair.polygon)
-  const clipId = `stair-clip-${stair.id}`
-  const { stepLines, arrowPath } = computeStairGraphics(stair)
+  // 輪郭がゆがんでいても長方形として描く（段・矢印は長方形の範囲に描くので、ゆがむと三角形に切り抜かれていた）
+  const path = pointsToPath(stairRect(stair.polygon))
+  const clipId = `stair-clip-${clipScope}-${stair.id}`
+  const { stepLines, arrowPath, breakLine } = computeStairGraphics(stair)
   const label = computeStairLabelLayout(stair)
   const canSelect = selectable && onSelect
   const canDrag = editable && !!onMove
@@ -126,8 +131,19 @@ export function StairRenderer({
             y2={line.y2}
             stroke={STAIR.line}
             strokeWidth={0.65}
+            // 破断線より先の段は破線（1階の描き方）
+            strokeDasharray={line.dashed ? '3 2' : undefined}
           />
         ))}
+        {breakLine && (
+          <polyline
+            points={breakLine.map((p) => `${p.x},${p.y}`).join(' ')}
+            fill="none"
+            stroke={STAIR.line}
+            strokeWidth={0.9}
+            strokeLinejoin="miter"
+          />
+        )}
       </g>
       {arrowPath && tip && (
         <g className="stair-arrow" clipPath={`url(#${clipId})`}>

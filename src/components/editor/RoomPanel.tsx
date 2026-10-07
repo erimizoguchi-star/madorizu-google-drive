@@ -26,6 +26,7 @@ import {
   parseAxisAlignedRect,
 } from '../../utils/roomGeometry'
 import { OffsetFields } from './OffsetFields'
+import { NumberField } from '../NumberField'
 
 interface RoomPanelProps {
   floorPlan: FloorPlan
@@ -118,6 +119,34 @@ export function RoomPanel({ floorPlan, selected, onSelect, onChange }: RoomPanel
             </select>
           </div>
 
+          {hideAreaJo ? (
+            <p className="editor-fixed-hint">
+              廊下・ホール・階段は帖数を表示しません（部屋名のみ表示）。
+            </p>
+          ) : (
+            <div className="editor-field">
+              <label htmlFor="room-area">帖数</label>
+              <NumberField
+                id="room-area"
+                step={0.1}
+                min={0}
+                digits={2}
+                allowEmpty
+                placeholder="空欄で自動計算"
+                value={currentRoom.room.areaJo ?? null}
+                onCommit={(areaJo) => handleRoomField({ areaJo })}
+              />
+              <label className="editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={currentRoom.room.showAreaJo !== false}
+                  onChange={(e) => handleRoomField({ showAreaJo: e.target.checked })}
+                />
+                帖数を表示
+              </label>
+            </div>
+          )}
+
           {roomDimensions ? (
             <div className="editor-field editor-size-section">
               <span className="editor-offset-heading">部屋サイズ</span>
@@ -127,30 +156,20 @@ export function RoomPanel({ floorPlan, selected, onSelect, onChange }: RoomPanel
               <div className="editor-size-inputs">
                 <label>
                   幅（mm）
-                  <input
-                    type="number"
+                  <NumberField
                     step={50}
                     min={MIN_ROOM_SIZE_MM}
                     value={roomDimensions.widthMm}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10)
-                      if (Number.isNaN(val)) return
-                      handleRoomSize({ widthMm: val })
-                    }}
+                    onCommit={(widthMm) => widthMm != null && handleRoomSize({ widthMm })}
                   />
                 </label>
                 <label>
                   奥行（mm）
-                  <input
-                    type="number"
+                  <NumberField
                     step={50}
                     min={MIN_ROOM_SIZE_MM}
                     value={roomDimensions.heightMm}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10)
-                      if (Number.isNaN(val)) return
-                      handleRoomSize({ heightMm: val })
-                    }}
+                    onCommit={(heightMm) => heightMm != null && handleRoomSize({ heightMm })}
                   />
                 </label>
               </div>
@@ -193,324 +212,297 @@ export function RoomPanel({ floorPlan, selected, onSelect, onChange }: RoomPanel
             </div>
           )}
 
-          <div className="editor-field editor-size-section">
-            <span className="editor-offset-heading">角のアール</span>
-            <p className="editor-offset-hint">
-              凸角・凹角（L字の内側など）どちらも円弧にできます。0 で直角に戻ります。壁線は角で直角のままです。
-            </p>
-            <div className="editor-size-inputs">
-              <label>
-                すべての角（mm）
-                <input
-                  type="number"
-                  step={50}
-                  min={0}
-                  placeholder="例: 150"
-                  value={
-                    (() => {
-                      const radii = currentRoom.room.cornerRadiiMm
-                      const n = currentRoom.room.polygon.length
-                      if (!radii || radii.length === 0) return ''
-                      const first = radii[0] ?? 0
-                      const uniform = Array.from({ length: n }, (_, i) => radii[i] ?? 0).every((v) => v === first)
-                      return uniform && first > 0 ? first : ''
-                    })()
-                  }
-                  onChange={(e) => {
-                    const raw = e.target.value
-                    if (raw === '') {
-                      handleRoomField({ cornerRadiiMm: null })
-                      return
+          <details className="editor-details">
+            <summary>詳細設定（角の丸み・色・模様・文字の大きさ・備考・表示位置）</summary>
+            <div className="editor-field editor-size-section">
+              <span className="editor-offset-heading">角のアール</span>
+              <p className="editor-offset-hint">
+                凸角・凹角（L字の内側など）どちらも円弧にできます。0 で直角に戻ります。壁線は角で直角のままです。
+              </p>
+              <div className="editor-size-inputs">
+                <label>
+                  すべての角（mm）
+                  <input
+                    type="number"
+                    step={50}
+                    min={0}
+                    placeholder="例: 150"
+                    value={
+                      (() => {
+                        const radii = currentRoom.room.cornerRadiiMm
+                        const n = currentRoom.room.polygon.length
+                        if (!radii || radii.length === 0) return ''
+                        const first = radii[0] ?? 0
+                        const uniform = Array.from({ length: n }, (_, i) => radii[i] ?? 0).every((v) => v === first)
+                        return uniform && first > 0 ? first : ''
+                      })()
                     }
-                    const val = parseInt(raw, 10)
-                    if (Number.isNaN(val) || val < 0) return
-                    handleRoomField({
-                      cornerRadiiMm: setAllCornerRadiiMm(currentRoom.room.polygon.length, val) ?? null,
-                    })
-                  }}
-                />
-              </label>
-            </div>
-            <div className="editor-nudge-row" style={{ marginTop: 8 }}>
-              {[0, 100, 150, 200, 300].map((mm) => (
-                <button
-                  key={mm}
-                  type="button"
-                  className="btn editor-nudge-btn"
-                  onClick={() =>
-                    handleRoomField({
-                      cornerRadiiMm:
-                        mm <= 0 ? null : setAllCornerRadiiMm(currentRoom.room.polygon.length, mm) ?? null,
-                    })
-                  }
-                >
-                  {mm === 0 ? '直角' : `${mm}`}
-                </button>
-              ))}
-            </div>
-            {currentRoom.room.polygon.length > 0 && (
-              <div className="editor-corner-list" style={{ marginTop: 10, display: 'grid', gap: 6 }}>
-                {currentRoom.room.polygon.map((_, index) => (
-                  <label key={index} className="editor-corner-item" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ minWidth: '3.5em' }}>角 {index + 1}</span>
-                    <input
-                      type="number"
-                      step={50}
-                      min={0}
-                      value={currentRoom.room.cornerRadiiMm?.[index] ?? 0}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10)
-                        if (Number.isNaN(val) || val < 0) return
-                        handleRoomField({
-                          cornerRadiiMm:
-                            setCornerRadiusMmAt(
-                              currentRoom.room.cornerRadiiMm,
-                              currentRoom.room.polygon.length,
-                              index,
-                              val
-                            ) ?? null,
-                        })
-                      }}
-                    />
-                    <span>mm</span>
-                  </label>
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      if (raw === '') {
+                        handleRoomField({ cornerRadiiMm: null })
+                        return
+                      }
+                      const val = parseInt(raw, 10)
+                      if (Number.isNaN(val) || val < 0) return
+                      handleRoomField({
+                        cornerRadiiMm: setAllCornerRadiiMm(currentRoom.room.polygon.length, val) ?? null,
+                      })
+                    }}
+                  />
+                </label>
+              </div>
+              <div className="editor-nudge-row" style={{ marginTop: 8 }}>
+                {[0, 100, 150, 200, 300].map((mm) => (
+                  <button
+                    key={mm}
+                    type="button"
+                    className="btn editor-nudge-btn"
+                    onClick={() =>
+                      handleRoomField({
+                        cornerRadiiMm:
+                          mm <= 0 ? null : setAllCornerRadiiMm(currentRoom.room.polygon.length, mm) ?? null,
+                      })
+                    }
+                  >
+                    {mm === 0 ? '直角' : `${mm}`}
+                  </button>
                 ))}
               </div>
-            )}
-          </div>
-
-          <div className="editor-field">
-            <label htmlFor="room-fill-color">塗り色</label>
-            <div className="editor-color-row">
-              <input
-                id="room-fill-color"
-                type="color"
-                value={resolveRoomFillColor(currentRoom.room)}
-                onChange={(e) => handleRoomField({ fillColor: e.target.value.toUpperCase() })}
-              />
-              <input
-                type="text"
-                className="editor-color-text"
-                value={resolveRoomFillColor(currentRoom.room)}
-                onChange={(e) => {
-                  const hex = normalizeHexColor(e.target.value)
-                  if (hex) handleRoomField({ fillColor: hex })
-                }}
-                placeholder="#RRGGBB"
-                spellCheck={false}
-              />
-              {currentRoom.room.fillColor != null && (
-                <button
-                  type="button"
-                  className="editor-reset-btn"
-                  onClick={() => handleRoomField({ fillColor: null })}
-                >
-                  デフォルト
-                </button>
+              {currentRoom.room.polygon.length > 0 && (
+                <div className="editor-corner-list" style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+                  {currentRoom.room.polygon.map((_, index) => (
+                    <label key={index} className="editor-corner-item" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ minWidth: '3.5em' }}>角 {index + 1}</span>
+                      <input
+                        type="number"
+                        step={50}
+                        min={0}
+                        value={currentRoom.room.cornerRadiiMm?.[index] ?? 0}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10)
+                          if (Number.isNaN(val) || val < 0) return
+                          handleRoomField({
+                            cornerRadiiMm:
+                              setCornerRadiusMmAt(
+                                currentRoom.room.cornerRadiiMm,
+                                currentRoom.room.polygon.length,
+                                index,
+                                val
+                              ) ?? null,
+                          })
+                        }}
+                      />
+                      <span>mm</span>
+                    </label>
+                  ))}
+                </div>
               )}
             </div>
-            <p className="editor-field-hint">
-              デフォルト: {getDefaultFillColor(currentRoom.room.type)}
-              {currentRoom.room.fillColor == null && '（タイプ連動）'}
-            </p>
-          </div>
 
-          <div className="editor-field">
-            <label htmlFor="room-fill-pattern">模様</label>
-            <select
-              id="room-fill-pattern"
-              value={currentRoom.room.fillPattern ?? ''}
-              onChange={(e) => {
-                const val = e.target.value
-                handleRoomField({
-                  fillPattern: val === '' ? null : (val as RoomFillPattern),
-                })
-              }}
-            >
-              {ROOM_PATTERN_OPTIONS.map((opt) => (
-                <option key={opt.value || 'auto'} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <p className="editor-field-hint">
-              表示:{' '}
-              {ROOM_PATTERN_OPTIONS.find((o) => o.value === resolveRoomFillPattern(currentRoom.room))
-                ?.label ?? 'なし'}
-              {currentRoom.room.fillPattern == null && '（タイプ連動）'}
-            </p>
-          </div>
-
-          <div className="editor-field">
-            <label htmlFor="room-font-size">
-              部屋名フォントサイズ（pt）
-              {currentRoom.room.labelFontSize == null && (
-                <span className="editor-field-default"> デフォルト {LABEL.defaultFontSize}pt</span>
-              )}
-            </label>
-            <input
-              id="room-font-size"
-              type="number"
-              step="1"
-              min={LABEL.fontSizeMin}
-              max={LABEL.fontSizeMax}
-              value={currentRoom.room.labelFontSize ?? LABEL.defaultFontSize}
-              onChange={(e) => {
-                const val = parseFloat(e.target.value)
-                if (Number.isNaN(val)) return
-                const clamped = Math.min(LABEL.fontSizeMax, Math.max(LABEL.fontSizeMin, val))
-                if (clamped === LABEL.defaultFontSize) {
-                  handleRoomField({ labelFontSize: null })
-                } else {
-                  handleRoomField({ labelFontSize: clamped })
-                }
-              }}
-            />
-            {currentRoom.room.labelFontSize != null && (
-              <button
-                type="button"
-                className="editor-reset-btn"
-                onClick={() => handleRoomField({ labelFontSize: null })}
-              >
-                {LABEL.defaultFontSize}pt（デフォルト）に戻す
-              </button>
-            )}
-          </div>
-
-          {hideAreaJo ? (
-            <p className="editor-fixed-hint">
-              廊下・ホール・階段は帖数を表示しません（部屋名のみ表示）。
-            </p>
-          ) : (
             <div className="editor-field">
-              <label htmlFor="room-area">帖数</label>
-              <input
-                id="room-area"
-                type="number"
-                step="0.1"
-                min="0"
-                placeholder="空欄で自動計算"
-                value={currentRoom.room.areaJo ?? ''}
+              <label htmlFor="room-fill-color">塗り色</label>
+              <div className="editor-color-row">
+                <input
+                  id="room-fill-color"
+                  type="color"
+                  value={resolveRoomFillColor(currentRoom.room)}
+                  onChange={(e) => handleRoomField({ fillColor: e.target.value.toUpperCase() })}
+                />
+                <input
+                  type="text"
+                  className="editor-color-text"
+                  value={resolveRoomFillColor(currentRoom.room)}
+                  onChange={(e) => {
+                    const hex = normalizeHexColor(e.target.value)
+                    if (hex) handleRoomField({ fillColor: hex })
+                  }}
+                  placeholder="#RRGGBB"
+                  spellCheck={false}
+                />
+                {currentRoom.room.fillColor != null && (
+                  <button
+                    type="button"
+                    className="editor-reset-btn"
+                    onClick={() => handleRoomField({ fillColor: null })}
+                  >
+                    デフォルト
+                  </button>
+                )}
+              </div>
+              <p className="editor-field-hint">
+                デフォルト: {getDefaultFillColor(currentRoom.room.type)}
+                {currentRoom.room.fillColor == null && '（タイプ連動）'}
+              </p>
+            </div>
+
+            <div className="editor-field">
+              <label htmlFor="room-fill-pattern">模様</label>
+              <select
+                id="room-fill-pattern"
+                value={currentRoom.room.fillPattern ?? ''}
                 onChange={(e) => {
                   const val = e.target.value
-                  handleRoomField({ areaJo: val === '' ? null : parseFloat(val) })
+                  handleRoomField({
+                    fillPattern: val === '' ? null : (val as RoomFillPattern),
+                  })
                 }}
-              />
-              <label className="editor-checkbox">
-                <input
-                  type="checkbox"
-                  checked={currentRoom.room.showAreaJo !== false}
-                  onChange={(e) => handleRoomField({ showAreaJo: e.target.checked })}
-                />
-                帖数を表示
-              </label>
+              >
+                {ROOM_PATTERN_OPTIONS.map((opt) => (
+                  <option key={opt.value || 'auto'} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="editor-field-hint">
+                表示:{' '}
+                {ROOM_PATTERN_OPTIONS.find((o) => o.value === resolveRoomFillPattern(currentRoom.room))
+                  ?.label ?? 'なし'}
+                {currentRoom.room.fillPattern == null && '（タイプ連動）'}
+              </p>
             </div>
-          )}
 
-          <div className="editor-field">
-            <label htmlFor="room-note">備考（勾配天井など）</label>
-            <input
-              id="room-note"
-              type="text"
-              placeholder="例: ※勾配天井"
-              value={currentRoom.room.note ?? ''}
-              onChange={(e) => handleRoomField({ note: e.target.value || null })}
-            />
-            <label className="editor-checkbox">
-              <input
-                type="checkbox"
-                checked={currentRoom.room.showNote !== false}
-                onChange={(e) => handleRoomField({ showNote: e.target.checked })}
-                disabled={!currentRoom.room.note}
-              />
-              備考を表示
-            </label>
-          </div>
-
-          {currentRoom.room.note && (
             <div className="editor-field">
-              <label htmlFor="room-note-font-size">
-                備考フォントサイズ（pt）
-                {currentRoom.room.noteFontSize == null && (
-                  <span className="editor-field-default">
-                    {' '}
-                    デフォルト{' '}
-                    {Math.round(
-                      (currentRoom.room.labelFontSize ?? LABEL.defaultFontSize) *
-                        LABEL.noteSizeRatio *
-                        10
-                    ) / 10}
-                    pt
-                  </span>
+              <label htmlFor="room-font-size">
+                部屋名フォントサイズ（pt）
+                {currentRoom.room.labelFontSize == null && (
+                  <span className="editor-field-default"> デフォルト {LABEL.defaultFontSize}pt</span>
                 )}
               </label>
               <input
-                id="room-note-font-size"
+                id="room-font-size"
                 type="number"
                 step="1"
                 min={LABEL.fontSizeMin}
                 max={LABEL.fontSizeMax}
-                value={
-                  currentRoom.room.noteFontSize ??
-                  Math.round(
-                    (currentRoom.room.labelFontSize ?? LABEL.defaultFontSize) *
-                      LABEL.noteSizeRatio *
-                      10
-                  ) / 10
-                }
+                value={currentRoom.room.labelFontSize ?? LABEL.defaultFontSize}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value)
                   if (Number.isNaN(val)) return
                   const clamped = Math.min(LABEL.fontSizeMax, Math.max(LABEL.fontSizeMin, val))
-                  const defaultNote =
+                  if (clamped === LABEL.defaultFontSize) {
+                    handleRoomField({ labelFontSize: null })
+                  } else {
+                    handleRoomField({ labelFontSize: clamped })
+                  }
+                }}
+              />
+              {currentRoom.room.labelFontSize != null && (
+                <button
+                  type="button"
+                  className="editor-reset-btn"
+                  onClick={() => handleRoomField({ labelFontSize: null })}
+                >
+                  {LABEL.defaultFontSize}pt（デフォルト）に戻す
+                </button>
+              )}
+            </div>
+
+            <div className="editor-field">
+              <label htmlFor="room-note">備考（勾配天井など）</label>
+              <input
+                id="room-note"
+                type="text"
+                placeholder="例: ※勾配天井"
+                value={currentRoom.room.note ?? ''}
+                onChange={(e) => handleRoomField({ note: e.target.value || null })}
+              />
+              <label className="editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={currentRoom.room.showNote !== false}
+                  onChange={(e) => handleRoomField({ showNote: e.target.checked })}
+                  disabled={!currentRoom.room.note}
+                />
+                備考を表示
+              </label>
+            </div>
+
+            {currentRoom.room.note && (
+              <div className="editor-field">
+                <label htmlFor="room-note-font-size">
+                  備考フォントサイズ（pt）
+                  {currentRoom.room.noteFontSize == null && (
+                    <span className="editor-field-default">
+                      {' '}
+                      デフォルト{' '}
+                      {Math.round(
+                        (currentRoom.room.labelFontSize ?? LABEL.defaultFontSize) *
+                          LABEL.noteSizeRatio *
+                          10
+                      ) / 10}
+                      pt
+                    </span>
+                  )}
+                </label>
+                <input
+                  id="room-note-font-size"
+                  type="number"
+                  step="1"
+                  min={LABEL.fontSizeMin}
+                  max={LABEL.fontSizeMax}
+                  value={
+                    currentRoom.room.noteFontSize ??
                     Math.round(
                       (currentRoom.room.labelFontSize ?? LABEL.defaultFontSize) *
                         LABEL.noteSizeRatio *
                         10
                     ) / 10
-                  if (clamped === defaultNote) {
-                    handleRoomField({ noteFontSize: null })
-                  } else {
-                    handleRoomField({ noteFontSize: clamped })
                   }
-                }}
-              />
-              {currentRoom.room.noteFontSize != null && (
-                <button
-                  type="button"
-                  className="editor-reset-btn"
-                  onClick={() => handleRoomField({ noteFontSize: null })}
-                >
-                  デフォルトサイズに戻す
-                </button>
-              )}
-              <OffsetFields
-                label="備考の位置"
-                offset={currentRoom.room.noteLabelOffset}
-                onChange={(o) => handleRoomOffset('note', o)}
-                onReset={() => handleRoomOffset('note', { x: 0, y: 0 })}
-              />
-            </div>
-          )}
-
-          <div className="editor-field">
-            <span className="editor-offset-heading">表示位置の調整</span>
-            <p className="editor-offset-hint">数値入力または間取図上でラベルをドラッグ</p>
-            <OffsetFields
-              label="部屋名"
-              offset={currentRoom.room.nameLabelOffset}
-              onChange={(o) => handleRoomOffset('name', o)}
-              onReset={() => handleRoomOffset('name', { x: 0, y: 0 })}
-            />
-            {!hideAreaJo && (
-              <OffsetFields
-                label="帖数"
-                offset={currentRoom.room.areaLabelOffset}
-                onChange={(o) => handleRoomOffset('area', o)}
-                onReset={() => handleRoomOffset('area', { x: 0, y: 0 })}
-              />
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value)
+                    if (Number.isNaN(val)) return
+                    const clamped = Math.min(LABEL.fontSizeMax, Math.max(LABEL.fontSizeMin, val))
+                    const defaultNote =
+                      Math.round(
+                        (currentRoom.room.labelFontSize ?? LABEL.defaultFontSize) *
+                          LABEL.noteSizeRatio *
+                          10
+                      ) / 10
+                    if (clamped === defaultNote) {
+                      handleRoomField({ noteFontSize: null })
+                    } else {
+                      handleRoomField({ noteFontSize: clamped })
+                    }
+                  }}
+                />
+                {currentRoom.room.noteFontSize != null && (
+                  <button
+                    type="button"
+                    className="editor-reset-btn"
+                    onClick={() => handleRoomField({ noteFontSize: null })}
+                  >
+                    デフォルトサイズに戻す
+                  </button>
+                )}
+                <OffsetFields
+                  label="備考の位置"
+                  offset={currentRoom.room.noteLabelOffset}
+                  onChange={(o) => handleRoomOffset('note', o)}
+                  onReset={() => handleRoomOffset('note', { x: 0, y: 0 })}
+                />
+              </div>
             )}
-          </div>
+
+            <div className="editor-field">
+              <span className="editor-offset-heading">表示位置の調整</span>
+              <p className="editor-offset-hint">数値入力または間取図上でラベルをドラッグ</p>
+              <OffsetFields
+                label="部屋名"
+                offset={currentRoom.room.nameLabelOffset}
+                onChange={(o) => handleRoomOffset('name', o)}
+                onReset={() => handleRoomOffset('name', { x: 0, y: 0 })}
+              />
+              {!hideAreaJo && (
+                <OffsetFields
+                  label="帖数"
+                  offset={currentRoom.room.areaLabelOffset}
+                  onChange={(o) => handleRoomOffset('area', o)}
+                  onReset={() => handleRoomOffset('area', { x: 0, y: 0 })}
+                />
+              )}
+            </div>
+          </details>
 
           <button type="button" className="btn btn-danger" onClick={handleDelete}>
             この部屋を削除

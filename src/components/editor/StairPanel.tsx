@@ -1,6 +1,7 @@
 import { STAIR_LAYOUT_OPTIONS, STAIR_ORIENTATION_OPTIONS } from '../../constants/stairOptions'
 import { LABEL } from '../../renderer/styles'
 import {
+  effectiveStairSteps,
   getStairBounds,
   resolveStairLayout,
   resolveStairOrientation,
@@ -9,6 +10,8 @@ import type { FloorPlan, Point, StairLayout, StairOrientation } from '../../type
 import {
   deleteStair,
   findStair,
+  STAIR_MAX_STEPS,
+  STAIR_MIN_STEPS,
   type SelectedElementRef,
   type SelectOptions,
   updateStair,
@@ -16,6 +19,7 @@ import {
 import { getStairLengthMm, STAIR_DEFAULT_WIDTH_MM } from '../../utils/resizeStair'
 import { mmToSvgUnits } from '../../utils/roomGeometry'
 import { OffsetFields } from './OffsetFields'
+import { NumberField } from '../NumberField'
 
 interface StairPanelProps {
   floorPlan: FloorPlan
@@ -54,36 +58,26 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
 
           <div className="editor-field">
             <label htmlFor="stair-width">幅（mm）</label>
-            <input
+            <NumberField
               id="stair-width"
-              type="number"
               min={600}
               max={1500}
               step={10}
               value={currentStair.stair.widthMm ?? STAIR_DEFAULT_WIDTH_MM}
-              onChange={(e) => {
-                const widthMm = Number(e.target.value)
-                if (!Number.isFinite(widthMm) || widthMm <= 0) return
-                handleStairField({ widthMm })
-              }}
+              onCommit={(widthMm) => widthMm != null && handleStairField({ widthMm })}
             />
             <p className="editor-field-hint">標準幅は {STAIR_DEFAULT_WIDTH_MM}mm です。</p>
           </div>
 
           <div className="editor-field">
             <label htmlFor="stair-length">長さ（mm）</label>
-            <input
+            <NumberField
               id="stair-length"
-              type="number"
               min={900}
               max={9000}
               step={50}
               value={getStairLengthMm(currentStair.stair)}
-              onChange={(e) => {
-                const lengthMm = Number(e.target.value)
-                if (!Number.isFinite(lengthMm) || lengthMm <= 0) return
-                handleStairField({ lengthMm })
-              }}
+              onCommit={(lengthMm) => lengthMm != null && handleStairField({ lengthMm })}
             />
             <p className="editor-field-hint">上り方向の長さです。上り始め側は動きません。</p>
           </div>
@@ -122,6 +116,27 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
           <p className="editor-offset-hint">図面上で階段をドラッグしても移動できます。</p>
 
           <div className="editor-field">
+            <label htmlFor="stair-steps">段の数</label>
+            <NumberField
+              id="stair-steps"
+              min={STAIR_MIN_STEPS}
+              max={STAIR_MAX_STEPS}
+              step={1}
+              value={effectiveStairSteps(currentStair.stair)}
+              onCommit={(steps) => steps != null && handleStairField({ steps })}
+            />
+            <p className="editor-field-hint">
+              {currentStair.stair.steps == null ? '今は自動で決めています。' : ''}
+              直線は全体、L字はまっすぐな部分、U字は片側ごとの段数です（曲がる部分の回り段は含みません）。
+            </p>
+            {currentStair.stair.steps != null && (
+              <button type="button" className="editor-reset-btn" onClick={() => handleStairField({ steps: null })}>
+                自動に戻す
+              </button>
+            )}
+          </div>
+
+          <div className="editor-field">
             <label htmlFor="stair-layout">段の形状</label>
             <select
               id="stair-layout"
@@ -152,37 +167,49 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
                 </option>
               ))}
             </select>
-            <p className="editor-field-hint">矢印と段差線の向きを変更します。</p>
+            <p className="editor-field-hint">
+              上る向きです（L字・U字は最初に上る向き。L字・下で曲がる形は曲がったあとの向き）。
+            </p>
           </div>
 
           <div className="editor-field">
-            <span className="editor-offset-label">表示文字（UP / DOWN）</span>
+            <span className="editor-offset-label">この階での表記（UP / DN）</span>
             <div className="editor-swing-grid">
               <button
                 type="button"
                 className={`btn editor-swing-btn ${currentStair.stair.direction !== 'down' ? 'active' : ''}`}
-                onClick={() => handleStairField({ direction: 'up', name: 'UP' })}
+                onClick={() => handleStairField({ direction: 'up' })}
               >
                 UP
               </button>
               <button
                 type="button"
                 className={`btn editor-swing-btn ${currentStair.stair.direction === 'down' ? 'active' : ''}`}
-                onClick={() => handleStairField({ direction: 'down', name: 'DOWN' })}
+                onClick={() => handleStairField({ direction: 'down' })}
               >
-                DOWN
+                DN
               </button>
             </div>
             <p className="editor-field-hint">
-              間取図上の表記です。1階は通常 UP、2階は通常 DOWN にします。
+              1階は UP（上り始めから矢印）、2階は DN（上り終わり側から下りの矢印）にします。上り方向は変わりません。
             </p>
+            {currentStair.stair.direction !== 'down' && (
+              <label className="editor-checkbox">
+                <input
+                  type="checkbox"
+                  checked={!!currentStair.stair.cutLine}
+                  onChange={(e) => handleStairField({ cutLine: e.target.checked })}
+                />
+                破断線を入れる（先の段は破線、矢印は破断線まで）
+              </label>
+            )}
             <label className="editor-checkbox">
               <input
                 type="checkbox"
                 checked={currentStair.stair.showName !== false}
                 onChange={(e) => handleStairField({ showName: e.target.checked })}
               />
-              UP / DOWN を表示
+              UP / DN を表示
             </label>
           </div>
 

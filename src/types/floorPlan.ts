@@ -105,6 +105,14 @@ export type WindowKind =
   | 'folding'
   | 'casement'
   | 'double_casement'
+  /** 横すべり出し窓（上を軸に外へ開く。平面図では外側に破線の四角と、外側を頂点とする破線の三角） */
+  | 'awning'
+  /** 縦すべり出し窓（縦の軸が窓の端から内側へすべりながら外へ開く） */
+  | 'slide_out'
+  /** FIX窓（はめ殺し） */
+  | 'fix'
+  /** 中央が FIX、両端が外へ開く縦すべり出しの連窓 */
+  | 'fix_casement'
 
 export interface Window {
   id: string
@@ -139,7 +147,21 @@ export interface Fixture {
   angle?: number
 }
 
-export type StairLayout = 'straight' | 'turn-right' | 'turn-left'
+/**
+ * 段の形状。
+ * - straight: 直線
+ * - turn-right / turn-left: L字・上り終わりの側で曲がる（右回り＝上りながら右へ）
+ * - turn-right-start / turn-left-start: L字・上り始めの側で曲がる
+ * - u-right / u-left: U字（折り返し）
+ */
+export type StairLayout =
+  | 'straight'
+  | 'turn-right'
+  | 'turn-left'
+  | 'turn-right-start'
+  | 'turn-left-start'
+  | 'u-right'
+  | 'u-left'
 
 /** 上り方向（SVG座標: y が小さいほど上） */
 export type StairOrientation = 'up' | 'down' | 'left' | 'right'
@@ -147,15 +169,25 @@ export type StairOrientation = 'up' | 'down' | 'left' | 'right'
 export interface Stair {
   id: string
   polygon: Point[]
-  /** @deprecated orientation を優先。未設定時の上り/下り表示用 */
+  /**
+   * この階での表記。up = この階から上る（1階・UP）、down = この階から下りる（2階・DN）。
+   * down のときは、上り終わり側から下りの向きに矢印を描く
+   */
   direction: 'up' | 'down'
   /** 段の形状: 直線 / 右回り / 左回り */
   layout?: StairLayout
-  /** 上り方向 */
+  /** 上り方向（L字・U字は最初に上る向き。L字・上り始めで曲がる形は、曲がったあとの向き） */
   orientation?: StairOrientation
+  /** 破断線を入れる（1階の描き方。破断線より先の段は破線、矢印は破断線まで） */
+  cutLine?: boolean
+  /**
+   * 段の数（段板の数）。直線は全体、L字はまっすぐな部分、U字は片側ごと。曲がる部分の回り段は含めない。
+   * 省略時は自動（直線は 7 段、L字・U字は長さから）
+   */
+  steps?: number
   /** 階段幅 mm（省略時 910） */
   widthMm?: number
-  /** 表示ラベル用。省略時は direction から UP / DOWN を出す */
+  /** 表示ラベル用。省略時は direction から UP / DN を出す */
   name?: string
   showName?: boolean
   labelFontSize?: number
@@ -202,9 +234,19 @@ export interface Floor {
   texts?: TextLabel[]
 }
 
+/** 階の並べ方（画面と出力の両方に使う） */
+export interface FloorLayout {
+  /** row = 横に並べる（既定）、column = 縦に並べる */
+  direction?: 'row' | 'column'
+  /** 建物の外形をそろえる位置。横並びなら上・中央・下、縦並びなら左・中央・右（既定 start） */
+  align?: 'start' | 'center' | 'end'
+}
+
 export interface FloorPlan {
   title: string
   floors: Floor[]
+  /** 階の並べ方（省略時は横並び・上そろえ） */
+  layout?: FloorLayout
   /** 1単位 = 何mm か（デフォルト 100mm） */
   scaleMm?: number
   /**

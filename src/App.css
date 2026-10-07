@@ -62,7 +62,8 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
-  padding: 1.25rem 1.5rem;
+  --preview-pad-top: 1.25rem;
+  padding: var(--preview-pad-top) 1.5rem 1.25rem;
   overflow: auto;
   background: var(--color-bg);
   display: flex;
@@ -282,6 +283,31 @@
   font-size: 0.7rem;
 }
 
+/* 読み込んだ図面を 90° ずつ回す */
+.upload-rotate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0.6rem 0 0.2rem;
+}
+
+.upload-rotate__label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.upload-rotate .btn {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.upload-rotate__hint {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
 .pdf-page-selector label {
   display: block;
   font-size: 0.75rem;
@@ -399,6 +425,63 @@
 .analyzing-hint {
   margin-top: 0.5rem;
   font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.append-hint {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.floors-panel h4 {
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+
+.floors-panel__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.floors-panel__item {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.floors-panel__item input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.floors-panel .floors-panel__btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.floors-panel .floors-panel__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.floors-panel__hint {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
   color: var(--color-text-muted);
   line-height: 1.5;
 }
@@ -619,6 +702,9 @@
 .floor-canvas {
   /* 大きさは svg の width/height 属性（実寸）に任せ、拡大縮小は ZoomableView で行う */
   display: block;
+  /* 部屋のダブルクリック（名前の入力）で、図面の文字が選択状態にならないようにする */
+  user-select: none;
+  -webkit-user-select: none;
   width: auto;
   height: auto;
   border: 1px solid #ddd;
@@ -770,6 +856,12 @@
   flex-wrap: nowrap;
 }
 
+/* 階の並べ方。建物の外形のそろえは、各階の余白（FloorPlanView が計算）で行うので、ここでは端にそろえるだけ */
+.floors-container-column {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .zoom-spacer {
   position: relative;
   margin: 0 auto;
@@ -815,6 +907,15 @@
   pointer-events: none;
 }
 
+/*
+ * 窓・扉のクリック判定の線だけは、上の「線は反応しない」から外す。
+ * 外さないと編集中は窓が選べず、クリックがその下の壁に吸われていた（扉も中央の丸でしか選べなかった）
+ */
+.floor-canvas-editable .windows-layer .window-hit-line,
+.floor-canvas-editable .doors-layer .door-hit-line {
+  pointer-events: stroke;
+}
+
 .floor-canvas-editable .labels-layer {
   pointer-events: auto;
 }
@@ -846,8 +947,33 @@
   pointer-events: auto;
 }
 
+/*
+ * 取っ手とクリック判定は、拡大率にかかわらず画面上で掴める大きさにする（--zoom は ZoomableView が渡す）。
+ * 図面の単位のままだと、全体を表示する縮小時（40% 前後）に直径 5px ほどになり掴めなかった。
+ * 拡大して見ているときは、元の図面の単位の大きさを下限にする。
+ */
 .edit-handle {
   cursor: grab;
+  r: max(6px, calc(7px / var(--zoom, 1)));
+  stroke-width: calc(1.5px / var(--zoom, 1));
+}
+
+.edit-handle-mid {
+  r: max(7px, calc(8px / var(--zoom, 1)));
+}
+
+.wall-hit-line,
+.window-hit-line {
+  stroke-width: max(16px, calc(14px / var(--zoom, 1)));
+}
+
+.door-hit-line {
+  stroke-width: max(18px, calc(16px / var(--zoom, 1)));
+}
+
+/* 扉の中央の丸は目印も兼ねるので、大きくしすぎない（縮小時に図面が丸だらけになる） */
+.door-hit {
+  r: max(10.5px, calc(5px / var(--zoom, 1)));
 }
 
 .edit-handle-mid {
@@ -1033,6 +1159,14 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+  /* 間取図までスクロールしても「選択中・削除」が見えるよう、上に留める。
+     スクロール枠の上の余白ぶん上に伸ばして、その余白から後ろの内容がのぞかないようにする */
+  position: sticky;
+  top: calc(-1 * var(--preview-pad-top, 0px));
+  z-index: 20;
+  margin-top: calc(-1 * var(--preview-pad-top, 0px));
+  padding: calc(var(--preview-pad-top, 0px) + 0.375rem) 0 0.375rem;
+  background: var(--color-bg);
 }
 
 .wide-edit-btn {
@@ -1050,6 +1184,493 @@
 .edit-space-hint {
   font-size: 0.75rem;
   color: #6B6459;
+}
+
+/* 「線を合わせる」の通り。太さ・取っ手・文字は拡大率によらず画面上で一定（--zoom は ZoomableView が渡す） */
+.grid-line-guide {
+  stroke-width: calc(1px / var(--zoom, 1));
+  stroke-dasharray: calc(4px / var(--zoom, 1)) calc(4px / var(--zoom, 1));
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.grid-line-body {
+  stroke-width: calc(3px / var(--zoom, 1));
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.grid-line-active .grid-line-body {
+  stroke-width: calc(4px / var(--zoom, 1));
+  opacity: 1;
+}
+
+.grid-line-hit {
+  stroke: transparent;
+  stroke-width: calc(14px / var(--zoom, 1));
+  pointer-events: stroke;
+}
+
+.grid-line:hover .grid-line-body {
+  stroke-width: calc(4px / var(--zoom, 1));
+  opacity: 1;
+}
+
+.grid-line-grip {
+  r: calc(7px / var(--zoom, 1));
+  stroke: #fff;
+  stroke-width: calc(1.5px / var(--zoom, 1));
+}
+
+.grid-line-dim {
+  font-size: calc(13px / var(--zoom, 1));
+  font-weight: 600;
+  fill: #222;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: calc(3px / var(--zoom, 1));
+}
+
+.overlay-stretch {
+  flex-basis: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid #E4C79A;
+  border-radius: var(--radius-md);
+  background: #FFF8EE;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.overlay-stretch__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.overlay-stretch__actions .btn {
+  flex: 0 0 auto;
+}
+
+/* サイドバーの作業段階タブ。スクロールしても上に残す（サイドバーの余白ぶん外へ広げて覆う） */
+.api-key-details > summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.api-key-details[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+.floor-arrange h4 {
+  font-size: 0.8125rem;
+  margin-bottom: 0.5rem;
+}
+
+.floor-arrange__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.floor-arrange__floor {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.floor-arrange__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.floor-arrange__size {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.floor-arrange__width {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.floor-arrange__width input {
+  width: 5.5rem;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font: inherit;
+}
+
+.floor-arrange__suggest {
+  padding: 0.375rem 0.5rem;
+  border: 1px solid #E4C79A;
+  border-radius: 4px;
+  background: #FFF8EE;
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.floor-arrange__suggest .floor-arrange__btn {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.floor-arrange__ok {
+  font-size: 0.75rem;
+  color: #2E8B57;
+  line-height: 1.5;
+}
+
+.floor-arrange .floor-arrange__btn {
+  flex: 0 0 auto;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+}
+
+.floor-arrange .floor-arrange__btn.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.floor-arrange__layout {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.floor-arrange__row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.floor-arrange__row > span {
+  min-width: 4em;
+  color: var(--color-text-muted);
+}
+
+.floor-arrange__hint {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.plan-checks {
+  border: 1px solid #E4C79A;
+  border-radius: var(--radius-md);
+  background: #FFF8EE;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.plan-checks:not([open]) {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.plan-checks > summary {
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.plan-checks__ok {
+  color: #2E8B57;
+}
+
+.plan-checks__list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.plan-checks__item {
+  width: 100%;
+  text-align: left;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  font: inherit;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.plan-checks__item:hover {
+  border-color: #E4C79A;
+  background: #fff;
+}
+
+.plan-checks__hint {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.autosave-restore {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.75rem;
+  border: 1px solid #E4C79A;
+  border-radius: var(--radius-md);
+  background: #FFF8EE;
+  font-size: 0.8125rem;
+}
+
+.autosave-restore > span {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.autosave-restore__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.autosave-status {
+  font-size: 0.75rem;
+  color: #2E8B57;
+  white-space: nowrap;
+}
+
+.autosave-status.is-error {
+  color: #8B5A52;
+}
+
+.sidebar-tabs {
+  position: sticky;
+  top: calc(-1 * var(--sidebar-pad-y, 1.5rem));
+  z-index: 5;
+  display: flex;
+  gap: 0.25rem;
+  margin: calc(-1 * var(--sidebar-pad-y, 1.5rem)) calc(-1 * var(--sidebar-pad-x, 1.5rem)) 0;
+  padding: 0.75rem var(--sidebar-pad-x, 1.5rem);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 0.5rem 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.sidebar-tab:hover {
+  background: var(--color-accent-soft);
+}
+
+.sidebar-tab.active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.sidebar-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.sidebar-tab-panel[hidden] {
+  display: none;
+}
+
+/* 部屋パネルの「詳細設定」。ふだん使わない設定をたたんでおく */
+.editor-details {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.75rem;
+}
+
+.editor-details > summary {
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.editor-details[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+/*
+ * 部屋の模様（木目・タイル・畳目など）は細い線なので、縮小表示（40〜60%）では画面上 0.3px ほどになり消えていた。
+ * 画面では最低 0.8px の太さにする（出力は SVG の属性の太さのまま）
+ */
+.room-pattern line {
+  stroke-width: max(0.6px, calc(0.8px / var(--zoom, 1)));
+}
+
+.floor-canvas-stage {
+  position: relative;
+}
+
+.selection-toolbar-anchor {
+  position: absolute;
+  z-index: 10;
+  transform-origin: 50% 100%;
+  white-space: nowrap;
+}
+
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.selection-toolbar select,
+.selection-toolbar input {
+  font: inherit;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: #fff;
+}
+
+.selection-toolbar__width {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-text-muted);
+}
+
+.selection-toolbar__width input {
+  width: 4.5rem;
+}
+
+.selection-toolbar__steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.selection-toolbar__steps strong {
+  min-width: 1.5em;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.selection-toolbar__steps .selection-toolbar__btn {
+  padding: 0.2rem 0.5rem;
+}
+
+.selection-toolbar__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.selection-toolbar__btn {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.selection-toolbar__btn:hover {
+  background: var(--color-accent-soft);
+}
+
+.selection-toolbar__btn.is-danger {
+  border-color: #C9A89A;
+  color: #8B5A52;
+}
+
+.selection-toolbar__btn.is-danger:hover {
+  background: #F8F0EE;
+}
+
+.align-btn {
+  border: 1px solid #C08A3E;
+  background: #FFF8EE;
+  color: #7A5520;
+  font-weight: 600;
+}
+
+.align-btn:hover {
+  background: #FBEBD3;
+}
+
+.align-btn.active {
+  background: #C08A3E;
+  color: #fff;
+}
+
+.align-hint-image {
+  color: #2E8B57;
+}
+
+.align-hint-line {
+  color: #3A6EA5;
+}
+
+.edit-selection {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: 0.8125rem;
+}
+
+.edit-selection__label strong {
+  font-weight: 600;
+}
+
+.edit-selection .edit-selection__delete {
+  flex: 0 0 auto;
+  padding: 0.375rem 0.875rem;
+  border: 1px solid #C9A89A;
+  background: var(--color-surface);
+  color: #8B5A52;
+  white-space: nowrap;
+}
+
+.edit-selection .edit-selection__delete:hover {
+  background: #F8F0EE;
 }
 
 .sidebar.sidebar-collapsed {
@@ -1076,12 +1697,15 @@
 
 /* パネルは出したまま少し細くして、間取図側に幅を回す（入力欄が窮屈にならない幅は残す） */
 .app-wide-edit .sidebar:not(.sidebar-collapsed) {
+  --sidebar-pad-y: 1rem;
+  --sidebar-pad-x: 0.85rem;
   width: 260px;
   min-width: 260px;
   padding: 1rem 0.85rem;
 }
 
 .app-wide-edit .preview-section {
+  --preview-pad-top: 0.5rem;
   padding: 0.5rem 0.75rem;
   gap: 0.4rem;
   overflow: hidden;
@@ -1242,6 +1866,23 @@
   color: #6B6459;
 }
 
+.overlay-turn-buttons {
+  display: inline-flex;
+  gap: 0.3rem;
+}
+
+.overlay-tilt-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.overlay-tilt-value input {
+  width: 3.6rem;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.8rem;
+}
+
 .overlay-controls button {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -1280,7 +1921,7 @@
   outline: 2px dashed #C08A3E;
 }
 
-/* 2点合わせで1点目をクリックした位置に出す印 */
+/* 3点合わせでクリックした位置に出す印 */
 .overlay-calib-marker {
   position: absolute;
   z-index: 6;
@@ -1641,6 +2282,7 @@
   }
 
   .preview-section {
+    --preview-pad-top: 1.5rem;
     padding: 1.5rem;
     overflow: visible;
     min-height: auto;

@@ -137,6 +137,29 @@ function wallCoversSegment(wall: Wall, seg: Segment): boolean {
   return overlapLength(ws.start, ws.end, ss.start, ss.end) >= segLen - EPS
 }
 
+/** 手で直した壁が、この辺と同じ線上でこれだけ重なっていれば、その辺は手で直した壁に任せる */
+const MANAGED_OVERLAP = 10
+/** 同じ線上とみなす座標の差（線合わせなどで 0.1 単位の丸めが入るため、少し幅を持たせる） */
+const SAME_LINE_EPS = 0.6
+
+/**
+ * 手で直した壁（端をドラッグした・手で足した壁）が、この辺と同じ線上に重なっているか。
+ * 重なっていれば、その辺の壁は自動で作らない。作ると、手で短くした壁の横に元の長さの壁が重なって
+ * 「壁が増える」うえ、短くしたことも取り消されてしまう。
+ */
+export function isManagedByManualWall(walls: Wall[], seg: Segment): boolean {
+  const ss = toOrthoSeg(seg)
+  if (!ss) return false
+  const segLen = ss.end - ss.start
+  return walls.some((wall) => {
+    if (!wall.manual) return false
+    const ws = toOrthoSeg({ x1: wall.start.x, y1: wall.start.y, x2: wall.end.x, y2: wall.end.y })
+    if (!ws || ws.horizontal !== ss.horizontal || Math.abs(ws.fixed - ss.fixed) > SAME_LINE_EPS) return false
+    const overlap = overlapLength(ws.start, ws.end, ss.start, ss.end)
+    return overlap >= Math.min(MANAGED_OVERLAP, segLen * 0.5)
+  })
+}
+
 function segmentToInteriorWall(seg: Segment, id: string): Wall {
   return {
     id,
@@ -205,12 +228,18 @@ function isHiddenSegment(hidden: HiddenWall[] | undefined, seg: Segment): boolea
   })
 }
 
-function collectInteriorWalls(rooms: Room[], stairs: Stair[], hidden?: HiddenWall[]): Wall[] {
+function collectInteriorWalls(
+  rooms: Room[],
+  stairs: Stair[],
+  hidden?: HiddenWall[],
+  manualWalls: Wall[] = []
+): Wall[] {
   let counter = 0
   const nextId = () => `w-int-${counter++}`
   return collectInteriorWallEntries(rooms, stairs)
     .filter((entry) => !isHiddenPair(hidden, wallPairKey(entry.owners)))
     .filter((entry) => !isHiddenSegment(hidden, entry.seg))
+    .filter((entry) => !isManagedByManualWall(manualWalls, entry.seg))
     .map((entry) => segmentToInteriorWall(entry.seg, nextId()))
 }
 
@@ -248,6 +277,8 @@ export function ensureExteriorWalls(floor: Floor): Floor {
     if (segmentLength(seg) < MIN_SEGMENT) continue
     // ユーザーが消した外壁は復活させない
     if (isHiddenSegment(floor.hiddenWalls, seg)) continue
+    // 手で直した壁がある辺は、その壁に任せる（元の長さの壁を重ねて作らない）
+    if (isManagedByManualWall(walls, seg)) continue
     const covered = walls.some((wall) => wallCoversSegment(wall, seg))
     if (!covered) {
       walls.push(segmentToWall(seg, nextId()))
@@ -263,8 +294,8 @@ export function ensureExteriorWalls(floor: Floor): Floor {
  */
 export function syncFloorWalls(floor: Floor): Floor {
   if (floor.rooms.length === 0) return floor
-  const interiorWalls = collectInteriorWalls(floor.rooms, floor.stairs, floor.hiddenWalls)
   // 手動で追加・調整した壁は作り直さずそのまま残す
   const manualWalls = floor.walls.filter((wall) => wall.manual)
+  const interiorWalls = collectInteriorWalls(floor.rooms, floor.stairs, floor.hiddenWalls, manualWalls)
   return ensureExteriorWalls({ ...floor, walls: [...interiorWalls, ...manualWalls] })
 }

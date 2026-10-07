@@ -1,10 +1,11 @@
-import { useRef } from 'react'
 import type { RectEdge, AxisAlignedRect } from '../utils/roomGeometry'
 import { SELECTION } from './styles'
-import { clientToSvg } from './svgCoords'
+import { useZoom } from '../components/zoomContext'
+import { attachSvgPointerDrag } from './svgCoords'
 
-const HANDLE_LENGTH = 28
-const HANDLE_THICKNESS = 8
+/** 取っ手の大きさ（画面上の px）。縮小表示でも掴めるよう、拡大率で割って図面の単位にする */
+const HANDLE_LENGTH_PX = 28
+const HANDLE_THICKNESS_PX = 9
 
 interface RoomResizeHandlesProps {
   rect: AxisAlignedRect
@@ -14,11 +15,9 @@ interface RoomResizeHandlesProps {
 }
 
 export function RoomResizeHandles({ rect, floorOffset, onResize }: RoomResizeHandlesProps) {
-  const dragRef = useRef<{
-    edge: RectEdge
-    pointerId: number
-    svg: SVGSVGElement
-  } | null>(null)
+  const zoom = useZoom()
+  const HANDLE_LENGTH = HANDLE_LENGTH_PX / zoom
+  const HANDLE_THICKNESS = HANDLE_THICKNESS_PX / zoom
 
   const { minX, minY, maxX, maxY } = rect
   const midX = (minX + maxX) / 2
@@ -66,41 +65,16 @@ export function RoomResizeHandles({ rect, floorOffset, onResize }: RoomResizeHan
     },
   ]
 
+  // ほかの取っ手と同じく attachSvgPointerDrag を使う。ドラッグ中は図面の描画範囲が固定される。
+  // 固定しないと、辺を建物の外へ広げたときに範囲が変わって図面の中身がずれ、辺がカーソルから離れる →
+  // そのずれがまた範囲を変える、という悪循環で辺が暴れ、図面がどこかへ行ってしまっていた
   const startDrag = (edge: RectEdge, e: React.PointerEvent<SVGRectElement>) => {
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
-
-    e.stopPropagation()
-    e.preventDefault()
-
-    dragRef.current = { edge, pointerId: e.pointerId, svg }
-
-    const onMove = (ev: PointerEvent) => {
-      const drag = dragRef.current
-      if (!drag || ev.pointerId !== drag.pointerId) return
-
-      const pos = clientToSvg(drag.svg, ev.clientX, ev.clientY)
-      if (!pos) return
-
-      const floorCoord =
-        drag.edge === 'east' || drag.edge === 'west'
-          ? pos.x - floorOffset.x
-          : pos.y - floorOffset.y
-
-      onResize(drag.edge, floorCoord)
-    }
-
-    const onUp = (ev: PointerEvent) => {
-      if (dragRef.current?.pointerId !== ev.pointerId) return
-      dragRef.current = null
-      document.removeEventListener('pointermove', onMove, true)
-      document.removeEventListener('pointerup', onUp, true)
-      document.removeEventListener('pointercancel', onUp, true)
-    }
-
-    document.addEventListener('pointermove', onMove, true)
-    document.addEventListener('pointerup', onUp, true)
-    document.addEventListener('pointercancel', onUp, true)
+    attachSvgPointerDrag(e, svg, (pos) => {
+      const floorCoord = edge === 'east' || edge === 'west' ? pos.x - floorOffset.x : pos.y - floorOffset.y
+      onResize(edge, floorCoord)
+    })
   }
 
   return (
@@ -114,10 +88,10 @@ export function RoomResizeHandles({ rect, floorOffset, onResize }: RoomResizeHan
           y={handle.y}
           width={handle.w}
           height={handle.h}
-          rx={2}
+          rx={2 / zoom}
           fill={SELECTION.stroke}
           stroke="#fff"
-          strokeWidth={1}
+          strokeWidth={1 / zoom}
           style={{ cursor: handle.cursor }}
           onPointerDown={(e) => startDrag(handle.edge, e)}
         />

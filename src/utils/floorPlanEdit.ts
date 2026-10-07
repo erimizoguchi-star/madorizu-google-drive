@@ -1,5 +1,4 @@
 import type { Door, DoorKind, Fixture, FixtureType, Floor, FloorPlan, HiddenWall, Point, Room, RoomFillPattern, Stair, StairLayout, StairOrientation, TextLabel, Wall, Window, WindowKind } from '../types/floorPlan'
-import { orientationToDirection } from '../constants/stairOptions'
 import { doorKindLabel } from '../constants/doorOptions'
 import { windowKindLabel } from '../constants/windowOptions'
 import { defaultFixtureSizeMm, fixtureTypeLabel } from '../constants/fixtureOptions'
@@ -14,6 +13,8 @@ import { mmToSvgUnits, snapSvgToMmGrid, type RectEdge } from './roomGeometry'
 import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom'
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
+import { detectOutwardSide, hasFourWayDirection, hasWindowDirection } from './windowOrientation'
+import { stairRect } from './stairShape'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
@@ -289,6 +290,10 @@ export function updateRoom(
   return { ...floorPlan, floors }
 }
 
+/** 段の数の範囲 */
+export const STAIR_MIN_STEPS = 2
+export const STAIR_MAX_STEPS = 30
+
 export function updateStair(
   floorPlan: FloorPlan,
   ref: { floorId: string; stairId: string },
@@ -299,6 +304,10 @@ export function updateStair(
     layout?: StairLayout
     orientation?: StairOrientation | null
     direction?: 'up' | 'down'
+    /** 破断線を入れる（1階の描き方） */
+    cutLine?: boolean
+    /** 段の数。null で自動に戻す */
+    steps?: number | null
     widthMm?: number
     lengthMm?: number
     /** 平行移動（SVG単位） */
@@ -324,11 +333,18 @@ export function updateStair(
         }
         if (patch.layout !== undefined) updated.layout = patch.layout
         if (patch.orientation === null) delete updated.orientation
-        else if (patch.orientation !== undefined) {
-          updated.orientation = patch.orientation
-          updated.direction = orientationToDirection(patch.orientation)
+        // 上り方向と UP/DN は別のもの（以前は上り方向を左・下にすると DN に変わっていた）
+        else if (patch.orientation !== undefined) updated.orientation = patch.orientation
+        if (patch.direction !== undefined) {
+          updated.direction = patch.direction
+          updated.name = patch.direction === 'down' ? 'DN' : 'UP'
         }
-        if (patch.direction !== undefined) updated.direction = patch.direction
+        if (patch.cutLine === true) updated.cutLine = true
+        else if (patch.cutLine === false) delete updated.cutLine
+        if (patch.steps === null) delete updated.steps
+        else if (typeof patch.steps === 'number' && Number.isFinite(patch.steps)) {
+          updated.steps = Math.min(STAIR_MAX_STEPS, Math.max(STAIR_MIN_STEPS, Math.round(patch.steps)))
+        }
         if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
           updated = withStairWidth(updated, patch.widthMm)
         } else if (patch.layout !== undefined || patch.orientation !== undefined || patch.orientation === null) {
@@ -339,6 +355,8 @@ export function updateStair(
         }
         // 平行移動は moveStair / setStairPolygon 側で開口追従と壁同期する
         updated = applyLabelOffsetPatch(updated, patch)
+        // 輪郭は長方形にそろえる（ゆがんでいると三角形に切り抜かれて表示される）
+        updated = { ...updated, polygon: stairRect(updated.polygon) }
         return updated
       }),
     }
@@ -514,6 +532,11 @@ export function updateDoor(
   return { ...floorPlan, floors }
 }
 
+/** 設備の大きさ（mm）の範囲。数値の暴走や打ち間違いで画面の外まで広がらないように */
+function clampFixtureMm(mm: number): number {
+  return Math.min(10000, Math.max(100, mm))
+}
+
 export function updateFixture(
   floorPlan: FloorPlan,
   ref: { floorId: string; fixtureId: string },
@@ -552,7 +575,7 @@ export function updateFixture(
           }
         }
         if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
-          const width = mmToSvgUnits(patch.widthMm)
+          const width = mmToSvgUnits(clampFixtureMm(patch.widthMm))
           const cx = updated.position.x + updated.width / 2
           updated = {
             ...updated,
@@ -561,7 +584,7 @@ export function updateFixture(
           }
         }
         if (typeof patch.heightMm === 'number' && patch.heightMm > 0) {
-          const height = mmToSvgUnits(patch.heightMm)
+          const height = mmToSvgUnits(clampFixtureMm(patch.heightMm))
           const cy = updated.position.y + updated.height / 2
           updated = {
             ...updated,
@@ -577,6 +600,55 @@ export function updateFixture(
     }
   })
 
+  return { ...floorPlan, floors }
+}
+
+/**
+ * 扉の向きを次へ切り替える。押すたびに「吊元（どちらの端）× 開く側」の4通りを順に回る。
+ * 戸の向き・開閉の向き・丁番の3つを考えて選ばなくても、図面と同じ形になるまで押せば済む。
+ *   (端A, 左側) → (端A, 右側) → (端B, 右側) → (端B, 左側) → 最初へ
+ */
+export function cycleDoorOrientation(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; doorId: string }
+): FloorPlan {
+  const found = findDoor(floorPlan, ref)
+  if (!found) return floorPlan
+  // 開く側だけを反対へ。すでに反対なら、丁番を反対の端へ（開く側はそのまま）
+  return found.door.swing === 1
+    ? updateDoor(floorPlan, ref, { swing: -1 })
+    : updateDoor(floorPlan, ref, { flipHinge: true })
+}
+
+/**
+ * 窓の向きを次へ切り替える。
+ * 左右対称でない窓（縦すべり出し・片開きなど）は、押すたびに「端 × 内外」の4通りを順に回る:
+ *   (端A, 外) → (端A, 内) → (端B, 内) → (端B, 外) → 最初へ
+ * 左右対称の窓は内外の2通り。
+ * 開く向き（outward）は start→end の進む向きに対する左右なので、端を入れ替える（start と end を入れ替える）と
+ * 同じ側でも値が反対になる。
+ */
+export function cycleWindowOrientation(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; windowId: string }
+): FloorPlan {
+  const found = findWindow(floorPlan, ref)
+  if (!found) return floorPlan
+  const win = found.window
+  if (!hasFourWayDirection(win.kind) || win.outward !== -1) {
+    return updateWindow(floorPlan, ref, { outward: win.outward === -1 ? 1 : -1 })
+  }
+  // 端を入れ替えて、開く側はそのまま（値は反対になる）
+  const floors = floorPlan.floors.map((floor, fi) =>
+    fi !== found.floorIndex
+      ? floor
+      : {
+          ...floor,
+          windows: floor.windows.map((w, wi) =>
+            wi === found.windowIndex ? { ...w, start: w.end, end: w.start, outward: 1 as const } : w
+          ),
+        }
+  )
   return { ...floorPlan, floors }
 }
 
@@ -603,6 +675,11 @@ export function updateWindow(
         let updated = { ...win }
         if (patch.kind === 'sliding') delete updated.kind
         else if (patch.kind !== undefined) updated.kind = patch.kind
+        // 開く向きのある種類に変えたときは、建物の外へ開くよう向け直す（前の種類の向きのままだと内側に開く）
+        if (patch.kind !== undefined && patch.outward === undefined && hasWindowDirection(patch.kind)) {
+          const outside = detectOutwardSide(floor, updated)
+          if (outside != null) updated.outward = outside
+        }
         if (patch.outward !== undefined) updated.outward = patch.outward
         if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
           const widthSvg = mmToSvgUnits(Math.min(6000, Math.max(300, patch.widthMm)))
@@ -781,6 +858,19 @@ function setSpacePolygon(
             }
           })
         : floor.windows,
+      // 手で直した壁は作り直されないので、この部屋だけの辺にあるものは一緒に動かす。
+      // 動かさないと元の位置に取り残され、新しい位置の自動の壁と合わせて「壁が増える」
+      walls: translating
+        ? floor.walls.map((wall) => {
+            if (!wall.manual) return wall
+            if (!wallBelongsOnlyToSpace(wall, spaceKey, oldPolygon, floor, edgeTol)) return wall
+            return {
+              ...wall,
+              start: { x: wall.start.x + dx, y: wall.start.y + dy },
+              end: { x: wall.end.x + dx, y: wall.end.y + dy },
+            }
+          })
+        : floor.walls,
       fixtures: translating
         ? floor.fixtures.map((fixture) => {
             const center = {
@@ -833,6 +923,24 @@ function floorSpaceEntries(floor: Floor): { key: string; polygon: Point[] }[] {
  * 開口が「移動中の空間（部屋 or 階段）の辺上にあり、かつ他空間の辺上にはない」ときだけ true。
  * 隣接して追加した部屋・階段を動かすとき、共有壁の扉・窓を持っていかない。
  */
+/**
+ * 壁がこの部屋（階段）だけの辺にあるか。壁の両端と中央がこの部屋の辺に乗り、中央がほかの部屋の辺に乗っていないこと。
+ * 端は角でほかの部屋に触れることが多いので、ほかの部屋との判定には使わない。
+ */
+function wallBelongsOnlyToSpace(
+  wall: Wall,
+  spaceKey: string,
+  spacePolygon: Point[],
+  floor: Floor,
+  tolerance: number
+): boolean {
+  const mid = { x: (wall.start.x + wall.end.x) / 2, y: (wall.start.y + wall.end.y) / 2 }
+  if (![wall.start, mid, wall.end].every((p) => isPointNearPolygonEdge(p, spacePolygon, tolerance))) return false
+  return !floorSpaceEntries(floor).some(
+    (other) => other.key !== spaceKey && isPointNearPolygonEdge(mid, other.polygon, tolerance)
+  )
+}
+
 function openingBelongsOnlyToSpace(
   points: Point[],
   spaceKey: string,
@@ -1017,7 +1125,7 @@ export function listAllEditableElements(
     floor.stairs.map((stair) => ({
       key: `stair:${floor.id}:${stair.id}`,
       ref: { kind: 'stair' as const, floorId: floor.id, stairId: stair.id },
-      label: `${floor.label} / 階段 ${stair.direction === 'down' ? 'DOWN' : 'UP'}`,
+      label: `${floor.label} / 階段 ${stair.direction === 'down' ? 'DN' : 'UP'}`,
     }))
   )
   const walls = floorPlan.floors.flatMap((floor) =>
@@ -1059,6 +1167,26 @@ export function listAllEditableElements(
     }))
   )
   return [...rooms, ...stairs, ...walls, ...doors, ...windows, ...fixtures, ...texts]
+}
+
+/** 選択中の要素の名前（「1階 / 外壁 w3」など）。見つからなければ null */
+export function describeSelection(floorPlan: FloorPlan, ref: SelectedElementRef): string | null {
+  const id =
+    ref.kind === 'room'
+      ? ref.roomId
+      : ref.kind === 'stair'
+        ? ref.stairId
+        : ref.kind === 'wall'
+          ? ref.wallId
+          : ref.kind === 'door'
+            ? ref.doorId
+            : ref.kind === 'window'
+              ? ref.windowId
+              : ref.kind === 'fixture'
+                ? ref.fixtureId
+                : ref.textId
+  const key = `${ref.kind}:${ref.floorId}:${id}`
+  return listAllEditableElements(floorPlan).find((e) => e.key === key)?.label ?? null
 }
 
 export function listAllRooms(

@@ -22,6 +22,7 @@ import { syncFloorWalls } from './ensureExteriorWalls'
 import { orientWindowsOutward } from './windowOrientation'
 import { mmToSvgUnits } from './roomGeometry'
 import { STAIR_DEFAULT_WIDTH_MM, withStairWidth } from './resizeStair'
+import { stairRect } from './stairShape'
 
 const VALID_ROOM_TYPES = new Set<RoomType>([
   'ld',
@@ -512,7 +513,15 @@ function fitWindowsToWalls(floor: Floor): Floor {
   return { ...floor, windows }
 }
 
-const STAIR_LAYOUTS: StairLayout[] = ['straight', 'turn-right', 'turn-left']
+const STAIR_LAYOUTS: StairLayout[] = [
+  'straight',
+  'turn-right',
+  'turn-left',
+  'turn-right-start',
+  'turn-left-start',
+  'u-right',
+  'u-left',
+]
 const STAIR_ORIENTATIONS: StairOrientation[] = ['up', 'down', 'left', 'right']
 
 function sanitizeStairLayout(value: unknown): StairLayout | undefined {
@@ -534,16 +543,23 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
       ? Math.round(stair.widthMm)
       : STAIR_DEFAULT_WIDTH_MM
   const preparedPolygon = useMm ? prepareMmPolygon(polygon) : polygon
-  const scaledPolygon = useMm ? scalePolygon(preparedPolygon) : preparedPolygon
+  // 階段の輪郭は長方形にそろえる（段・矢印は長方形の範囲に描く）
+  const scaledPolygon = stairRect(useMm ? scalePolygon(preparedPolygon) : preparedPolygon)
   const base: Stair = {
     ...stair,
     id: stair.id || `stair-${index}`,
-    name: stair.direction === 'down' ? 'DOWN' : 'UP',
+    name: stair.direction === 'down' ? 'DN' : 'UP',
     direction: stair.direction === 'down' ? 'down' : 'up',
     widthMm,
     ...(layout ? { layout } : {}),
     ...(orientation ? { orientation } : {}),
     polygon: scaledPolygon,
+  }
+  // 段の数は 2〜30 の整数だけ残す（おかしな値なら自動に戻す）
+  if (typeof base.steps === 'number' && Number.isFinite(base.steps) && base.steps >= 2) {
+    base.steps = Math.min(30, Math.round(base.steps))
+  } else {
+    delete base.steps
   }
   // 幅は 910mm（または明示指定）に揃える。生じた隙間は closeCoverageGaps で埋める
   return withStairWidth(base, widthMm)
@@ -612,9 +628,21 @@ export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {
     throw new Error('AIの応答に有効な部屋データが含まれていませんでした。別の画像で再試行してください。')
   }
 
+  const layout = sanitizeLayout(plan.layout)
   return {
     title: draft.title,
     scaleMm: draft.scaleMm,
     floors,
+    ...(layout ? { layout } : {}),
   }
+}
+
+/** 階の並べ方。知らない値は捨てる（保存した JSON を読み込んだときに並べ方が消えないよう引き継ぐ） */
+function sanitizeLayout(layout: unknown): FloorPlan['layout'] | undefined {
+  if (!layout || typeof layout !== 'object') return undefined
+  const { direction, align } = layout as Record<string, unknown>
+  const result: NonNullable<FloorPlan['layout']> = {}
+  if (direction === 'row' || direction === 'column') result.direction = direction
+  if (align === 'start' || align === 'center' || align === 'end') result.align = align
+  return Object.keys(result).length > 0 ? result : undefined
 }

@@ -1,17 +1,20 @@
 import { useEffect, useRef } from 'react'
+import { useZoom } from '../components/zoomContext'
 import type { Fixture, Point } from '../types/floorPlan'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { SELECTION } from './styles'
 import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
 
 /** 100% 表示だと画面上 5px 程度にしかならないため、掴める大きさにしておく */
-const CORNER_SIZE = 12
+/** 角の取っ手の大きさ（画面上の px）。拡大率で割って図面の単位にする */
+const CORNER_SIZE_PX = 12
 
 interface FixtureEditHandlesProps {
   fixture: Fixture
   floorOffset: Point
   onMove: (positionFloor: Point) => void
-  onResize?: (corner: FixtureCorner, positionFloor: Point) => void
+  /** cursorFloor はカーソル位置（間取図の座標）、start はドラッグを始めた時点の設備（間取図の座標） */
+  onResize?: (corner: FixtureCorner, cursorFloor: Point, start: Fixture) => void
 }
 
 /** 回転している設備の上でドラッグしたとき、回転前の座標系に戻す */
@@ -43,6 +46,7 @@ export function FixtureEditHandles({
   onResize,
 }: FixtureEditHandlesProps) {
   const { position, width, height, angle = 0 } = fixture
+  const CORNER_SIZE = CORNER_SIZE_PX / useZoom()
   // 回転の中心はキャンバス座標。ポインタも同じ座標系で回転を戻してから
   // フロア座標へ直す（座標系を混ぜるとカーソルと設備がずれる）。
   const cx = position.x + width / 2
@@ -54,9 +58,6 @@ export function FixtureEditHandles({
     // レンダー中に書くと lint（refs during render）に反するので effect で更新する
     latest.current = fixture
   })
-
-  const toFloorPoint = (canvasPos: Point, center: Point, angleDeg: number): Point =>
-    canvasToFloor(unrotate(canvasPos, center.x, center.y, angleDeg), floorOffset)
 
   const startDrag = (e: React.PointerEvent<SVGRectElement>) => {
     const svg = e.currentTarget.ownerSVGElement
@@ -92,11 +93,11 @@ export function FixtureEditHandles({
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
 
+    // ドラッグを始めた時点の設備を基準に毎回計算する（今の設備を基準にすると、回転した設備では誤差が増幅して暴走する）
+    const f = latest.current
+    const start: Fixture = { ...f, position: canvasToFloor(f.position, floorOffset) }
     attachSvgPointerDrag(e, svg, (canvasPos) => {
-      // 大きさを変えると中心も動くので、その時点の設備から中心を取り直す
-      const f = latest.current
-      const center = { x: f.position.x + f.width / 2, y: f.position.y + f.height / 2 }
-      onResize(corner, toFloorPoint(canvasPos, center, f.angle ?? 0))
+      onResize(corner, canvasToFloor(canvasPos, floorOffset), start)
     })
   }
 
