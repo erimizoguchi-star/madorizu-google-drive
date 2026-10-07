@@ -62,3 +62,20 @@ describe('階段の描き方', () => {
     expect(last(g.arrowPath!.points).y).toBeLessThan(g.arrowPath!.start.y)
   })
 })
+
+describe('段の数', () => {
+  const lines = (s: Stair) => computeStairGraphics(s).stepLines.length
+  it('直線は指定した段数になる（段板の境の線は段数−1本）', () => {
+    expect(lines(stair())).toBe(6)
+    expect(lines(stair({ steps: 12 }))).toBe(11)
+  })
+
+  it('L字・U字はまっすぐな部分の段数が変わる', () => {
+    const l = { id: 'l', polygon: rect(0, 0, 91, 270), direction: 'up' as const, orientation: 'up' as const, layout: 'turn-right' as const }
+    // L字: 段の境（段数−1）＋直線と曲がる部分の境＋回り段の2本
+    expect(computeStairGraphics({ ...l, steps: 10 }).stepLines.length).toBe(9 + 1 + 2)
+    const u = { id: 'u', polygon: rect(0, 0, 182, 270), direction: 'up' as const, orientation: 'up' as const, layout: 'u-right' as const }
+    // U字: 片側ごとに（段数−1）×2＋通路の境＋折り返しの境＋回り段4本
+    expect(computeStairGraphics({ ...u, steps: 8 }).stepLines.length).toBe(7 * 2 + 1 + 1 + 4)
+  })
+})

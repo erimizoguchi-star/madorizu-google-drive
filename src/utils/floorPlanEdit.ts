@@ -290,6 +290,10 @@ export function updateRoom(
   return { ...floorPlan, floors }
 }
 
+/** 段の数の範囲 */
+export const STAIR_MIN_STEPS = 2
+export const STAIR_MAX_STEPS = 30
+
 export function updateStair(
   floorPlan: FloorPlan,
   ref: { floorId: string; stairId: string },
@@ -302,6 +306,8 @@ export function updateStair(
     direction?: 'up' | 'down'
     /** 破断線を入れる（1階の描き方） */
     cutLine?: boolean
+    /** 段の数。null で自動に戻す */
+    steps?: number | null
     widthMm?: number
     lengthMm?: number
     /** 平行移動（SVG単位） */
@@ -335,6 +341,10 @@ export function updateStair(
         }
         if (patch.cutLine === true) updated.cutLine = true
         else if (patch.cutLine === false) delete updated.cutLine
+        if (patch.steps === null) delete updated.steps
+        else if (typeof patch.steps === 'number' && Number.isFinite(patch.steps)) {
+          updated.steps = Math.min(STAIR_MAX_STEPS, Math.max(STAIR_MIN_STEPS, Math.round(patch.steps)))
+        }
         if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
           updated = withStairWidth(updated, patch.widthMm)
         } else if (patch.layout !== undefined || patch.orientation !== undefined || patch.orientation === null) {

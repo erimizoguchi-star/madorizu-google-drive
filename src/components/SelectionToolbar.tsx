@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { DOOR_KIND_OPTIONS, DOOR_KINDS_WITH_SWING } from '../constants/doorOptions'
 import { mirrorStairLayout, nextStairOrientation, STAIR_LAYOUT_OPTIONS } from '../constants/stairOptions'
-import { getStairBounds, resolveStairLayout, resolveStairOrientation } from '../renderer/stairGraphics'
+import { effectiveStairSteps, getStairBounds, resolveStairLayout, resolveStairOrientation } from '../renderer/stairGraphics'
 import { ROOM_TYPE_OPTIONS, isAreaJoHiddenByType } from '../constants/roomTypes'
 import { WINDOW_KIND_OPTIONS, normalizeWindowKind } from '../constants/windowOptions'
 import type { DoorKind, FloorPlan, RoomType, StairLayout, WindowKind } from '../types/floorPlan'
@@ -12,6 +12,8 @@ import {
   findRoom,
   findStair,
   findWindow,
+  STAIR_MAX_STEPS,
+  STAIR_MIN_STEPS,
   updateDoor,
   updateRoom,
   updateStair,
@@ -83,6 +85,8 @@ function StairToolbar({
   const layout = resolveStairLayout(stair)
   const orientation = resolveStairOrientation(stair, getStairBounds(stair.polygon))
   const down = stair.direction === 'down'
+  const steps = effectiveStairSteps(stair)
+  const setSteps = (n: number) => onChange((prev) => updateStair(prev, selected, { steps: n }))
   return (
     <div className="selection-toolbar" data-no-pan>
       <select
@@ -114,6 +118,31 @@ function StairToolbar({
           ⇄ 回る向き
         </button>
       )}
+      <span
+        className="selection-toolbar__steps"
+        title={layout === 'straight' ? '段の数' : layout.startsWith('u') ? '段の数（片側の、まっすぐな部分）' : '段の数（まっすぐな部分）'}
+      >
+        段
+        <button
+          type="button"
+          className="selection-toolbar__btn"
+          aria-label="段を減らす"
+          disabled={steps <= STAIR_MIN_STEPS}
+          onClick={() => setSteps(steps - 1)}
+        >
+          −
+        </button>
+        <strong>{steps}</strong>
+        <button
+          type="button"
+          className="selection-toolbar__btn"
+          aria-label="段を増やす"
+          disabled={steps >= STAIR_MAX_STEPS}
+          onClick={() => setSteps(steps + 1)}
+        >
+          ＋
+        </button>
+      </span>
       <button
         type="button"
         className="selection-toolbar__btn"

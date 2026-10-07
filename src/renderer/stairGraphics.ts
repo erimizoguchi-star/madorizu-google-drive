@@ -202,25 +202,57 @@ function runFrame(bounds: StairBounds, orientation: StairOrientation) {
   }
 }
 
+/** L字の曲がる部分の奥行（長さの 45% まで、幅まで） */
+function lTurnDepth(L: number, W: number): number {
+  return Math.min(W, L * 0.45)
+}
+
+/** U字の折り返し部分の奥行（長さの 40% まで、片側の幅まで） */
+function uTurnDepth(L: number, W: number): number {
+  return Math.min(W / 2, L * 0.4)
+}
+
+/** 直線の階段の段の数（指定がないとき） */
+const STRAIGHT_DEFAULT_STEPS = 7
+
+/**
+ * 今の段の数（指定がなければ自動で決まる数）。直線は全体、L字はまっすぐな部分、U字は片側ごと
+ */
+export function effectiveStairSteps(stair: Stair): number {
+  if (stair.steps != null && stair.steps >= 2) return Math.round(stair.steps)
+  const layout = resolveStairLayout(stair)
+  if (layout === 'straight') return STRAIGHT_DEFAULT_STEPS
+  const bounds = getStairBounds(stair.polygon)
+  const { L, W } = runFrame(bounds, resolveStairOrientation(stair, bounds))
+  if (layout === 'u-right' || layout === 'u-left') return Math.max(3, Math.round((L - uTurnDepth(L, W)) / TREAD))
+  return Math.max(2, Math.round((L - lTurnDepth(L, W)) / TREAD))
+}
+
 /**
  * L字。上る向きの直線部分と、曲がる部分（回り段）を、上る向きを基準にした座標で作る。
  * - atEnd = true: 上り終わりの側で曲がる（直線を上ってから曲がって出る）
  * - atEnd = false: 上り始めの側で曲がる（横から入って曲がってから直線を上る）
  * 右回り＝上りながら右へ曲がる。回り段は、曲がる内側の角（手すりの柱の位置）から扇状に 3 段に分ける
  */
-function lTurnGraphics(bounds: StairBounds, orientation: StairOrientation, right: boolean, atEnd: boolean) {
+function lTurnGraphics(
+  bounds: StairBounds,
+  orientation: StairOrientation,
+  right: boolean,
+  atEnd: boolean,
+  steps?: number
+) {
   const frame = runFrame(bounds, orientation)
   const { L, W } = frame
   // 左回りは右回りを左右に映したもの
   const at = (s: number, t: number) => frame.at(s, right ? t : W - t)
-  const D = Math.min(W, L * 0.45)
+  const D = lTurnDepth(L, W)
   const line = (a: Point, b: Point): StairGraphicLine => ({ x1: a.x, y1: a.y, x2: b.x, y2: b.y })
   const stepLines: StairGraphicLine[] = []
 
   // 直線部分の段
   const runFrom = atEnd ? 0 : D
   const runTo = atEnd ? L - D : L
-  const count = Math.max(2, Math.round((runTo - runFrom) / TREAD))
+  const count = steps ?? Math.max(2, Math.round((runTo - runFrom) / TREAD))
   for (let k = 1; k < count; k++) {
     const sk = runFrom + ((runTo - runFrom) * k) / count
     stepLines.push(line(at(sk, 0), at(sk, W)))
@@ -264,14 +296,14 @@ function lTurnGraphics(bounds: StairBounds, orientation: StairOrientation, right
  * U字（折り返し）。幅を2本の通路に分け、1本目を上って突き当たりの回り段で折り返し、2本目を戻る。
  * 右回り＝上りながら右へ折り返す（1本目が左、2本目が右）
  */
-function uTurnGraphics(bounds: StairBounds, orientation: StairOrientation, right: boolean) {
+function uTurnGraphics(bounds: StairBounds, orientation: StairOrientation, right: boolean, steps?: number) {
   const { L, W, at } = runFrame(bounds, orientation)
   const lane = W / 2
-  const turnDepth = Math.min(lane, L * 0.4)
+  const turnDepth = uTurnDepth(L, W)
   const run = L - turnDepth
   const lane1 = right ? [0, lane] : [lane, W]
   const lane2 = right ? [lane, W] : [0, lane]
-  const count = Math.max(3, Math.round(run / TREAD))
+  const count = steps ?? Math.max(3, Math.round(run / TREAD))
   const line = (a: Point, b: Point): StairGraphicLine => ({ x1: a.x, y1: a.y, x2: b.x, y2: b.y })
 
   const stepLines: StairGraphicLine[] = []
@@ -354,7 +386,7 @@ function distanceAlong(points: Point[], p: Point): number {
 /** 破断線を入れる位置（矢印に沿った長さの割合） */
 const CUT_AT = 0.55
 
-export function computeStairGraphics(stair: Stair, stepCount = 7): StairGraphics {
+export function computeStairGraphics(stair: Stair, stepCount = STRAIGHT_DEFAULT_STEPS): StairGraphics {
   const bounds = getStairBounds(stair.polygon)
   const layout = resolveStairLayout(stair)
   const orientation = resolveStairOrientation(stair, bounds)
@@ -364,18 +396,19 @@ export function computeStairGraphics(stair: Stair, stepCount = 7): StairGraphics
   let stepLines: StairGraphicLine[]
   let ascent: StairArrowPath
   let laneWidth = crossWidth
+  const steps = stair.steps != null && stair.steps >= 2 ? Math.round(stair.steps) : undefined
   if (layout === 'straight') {
-    stepLines = straightSteps(bounds, orientation, stepCount)
+    stepLines = straightSteps(bounds, orientation, steps ?? stepCount)
     ascent = buildStraightArrowPath(bounds, orientation)
   } else if (layout !== 'u-right' && layout !== 'u-left') {
     // L字（上で曲がる・下で曲がる）。以前の作りは下向き・左向きに上る階段で曲がる側と回り段の向きが食い違っていた
     const right = layout === 'turn-right' || layout === 'turn-right-start'
     const atEnd = layout === 'turn-right' || layout === 'turn-left'
-    const l = lTurnGraphics(bounds, orientation, right, atEnd)
+    const l = lTurnGraphics(bounds, orientation, right, atEnd, steps)
     stepLines = l.stepLines
     ascent = l.arrowPath
   } else {
-    const u = uTurnGraphics(bounds, orientation, layout === 'u-right')
+    const u = uTurnGraphics(bounds, orientation, layout === 'u-right', steps)
     stepLines = u.stepLines
     ascent = u.arrowPath
     laneWidth = u.laneWidth

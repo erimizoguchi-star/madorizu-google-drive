@@ -1,6 +1,7 @@
 import { STAIR_LAYOUT_OPTIONS, STAIR_ORIENTATION_OPTIONS } from '../../constants/stairOptions'
 import { LABEL } from '../../renderer/styles'
 import {
+  effectiveStairSteps,
   getStairBounds,
   resolveStairLayout,
   resolveStairOrientation,
@@ -9,6 +10,8 @@ import type { FloorPlan, Point, StairLayout, StairOrientation } from '../../type
 import {
   deleteStair,
   findStair,
+  STAIR_MAX_STEPS,
+  STAIR_MIN_STEPS,
   type SelectedElementRef,
   type SelectOptions,
   updateStair,
@@ -111,6 +114,27 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
             </button>
           </div>
           <p className="editor-offset-hint">図面上で階段をドラッグしても移動できます。</p>
+
+          <div className="editor-field">
+            <label htmlFor="stair-steps">段の数</label>
+            <NumberField
+              id="stair-steps"
+              min={STAIR_MIN_STEPS}
+              max={STAIR_MAX_STEPS}
+              step={1}
+              value={effectiveStairSteps(currentStair.stair)}
+              onCommit={(steps) => steps != null && handleStairField({ steps })}
+            />
+            <p className="editor-field-hint">
+              {currentStair.stair.steps == null ? '今は自動で決めています。' : ''}
+              直線は全体、L字はまっすぐな部分、U字は片側ごとの段数です（曲がる部分の回り段は含みません）。
+            </p>
+            {currentStair.stair.steps != null && (
+              <button type="button" className="editor-reset-btn" onClick={() => handleStairField({ steps: null })}>
+                自動に戻す
+              </button>
+            )}
+          </div>
 
           <div className="editor-field">
             <label htmlFor="stair-layout">段の形状</label>

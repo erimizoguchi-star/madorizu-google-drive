@@ -180,6 +180,11 @@ export interface Stair {
   orientation?: StairOrientation
   /** 破断線を入れる（1階の描き方。破断線より先の段は破線、矢印は破断線まで） */
   cutLine?: boolean
+  /**
+   * 段の数（段板の数）。直線は全体、L字はまっすぐな部分、U字は片側ごと。曲がる部分の回り段は含めない。
+   * 省略時は自動（直線は 7 段、L字・U字は長さから）
+   */
+  steps?: number
   /** 階段幅 mm（省略時 910） */
   widthMm?: number
   /** 表示ラベル用。省略時は direction から UP / DN を出す */

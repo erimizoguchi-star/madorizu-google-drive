@@ -1541,6 +1541,24 @@
   width: 4.5rem;
 }
 
+.selection-toolbar__steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.selection-toolbar__steps strong {
+  min-width: 1.5em;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.selection-toolbar__steps .selection-toolbar__btn {
+  padding: 0.2rem 0.5rem;
+}
+
 .selection-toolbar__check {
   display: inline-flex;
   align-items: center;

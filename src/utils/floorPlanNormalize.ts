@@ -555,6 +555,12 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
     ...(orientation ? { orientation } : {}),
     polygon: scaledPolygon,
   }
+  // 段の数は 2〜30 の整数だけ残す（おかしな値なら自動に戻す）
+  if (typeof base.steps === 'number' && Number.isFinite(base.steps) && base.steps >= 2) {
+    base.steps = Math.min(30, Math.round(base.steps))
+  } else {
+    delete base.steps
+  }
   // 幅は 910mm（または明示指定）に揃える。生じた隙間は closeCoverageGaps で埋める
   return withStairWidth(base, widthMm)
 }
