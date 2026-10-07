@@ -515,6 +515,11 @@ export function updateDoor(
   return { ...floorPlan, floors }
 }
 
+/** 設備の大きさ（mm）の範囲。数値の暴走や打ち間違いで画面の外まで広がらないように */
+function clampFixtureMm(mm: number): number {
+  return Math.min(10000, Math.max(100, mm))
+}
+
 export function updateFixture(
   floorPlan: FloorPlan,
   ref: { floorId: string; fixtureId: string },
@@ -553,7 +558,7 @@ export function updateFixture(
           }
         }
         if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
-          const width = mmToSvgUnits(patch.widthMm)
+          const width = mmToSvgUnits(clampFixtureMm(patch.widthMm))
           const cx = updated.position.x + updated.width / 2
           updated = {
             ...updated,
@@ -562,7 +567,7 @@ export function updateFixture(
           }
         }
         if (typeof patch.heightMm === 'number' && patch.heightMm > 0) {
-          const height = mmToSvgUnits(patch.heightMm)
+          const height = mmToSvgUnits(clampFixtureMm(patch.heightMm))
           const cy = updated.position.y + updated.height / 2
           updated = {
             ...updated,

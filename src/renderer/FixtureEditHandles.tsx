@@ -13,7 +13,8 @@ interface FixtureEditHandlesProps {
   fixture: Fixture
   floorOffset: Point
   onMove: (positionFloor: Point) => void
-  onResize?: (corner: FixtureCorner, positionFloor: Point) => void
+  /** cursorFloor はカーソル位置（間取図の座標）、start はドラッグを始めた時点の設備（間取図の座標） */
+  onResize?: (corner: FixtureCorner, cursorFloor: Point, start: Fixture) => void
 }
 
 /** 回転している設備の上でドラッグしたとき、回転前の座標系に戻す */
@@ -58,9 +59,6 @@ export function FixtureEditHandles({
     latest.current = fixture
   })
 
-  const toFloorPoint = (canvasPos: Point, center: Point, angleDeg: number): Point =>
-    canvasToFloor(unrotate(canvasPos, center.x, center.y, angleDeg), floorOffset)
-
   const startDrag = (e: React.PointerEvent<SVGRectElement>) => {
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
@@ -95,11 +93,11 @@ export function FixtureEditHandles({
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
 
+    // ドラッグを始めた時点の設備を基準に毎回計算する（今の設備を基準にすると、回転した設備では誤差が増幅して暴走する）
+    const f = latest.current
+    const start: Fixture = { ...f, position: canvasToFloor(f.position, floorOffset) }
     attachSvgPointerDrag(e, svg, (canvasPos) => {
-      // 大きさを変えると中心も動くので、その時点の設備から中心を取り直す
-      const f = latest.current
-      const center = { x: f.position.x + f.width / 2, y: f.position.y + f.height / 2 }
-      onResize(corner, toFloorPoint(canvasPos, center, f.angle ?? 0))
+      onResize(corner, canvasToFloor(canvasPos, floorOffset), start)
     })
   }
 

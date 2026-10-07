@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
-import type { Floor } from '../types/floorPlan'
+import type { Fixture, Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
 import { CANVAS } from './styles'
@@ -55,7 +55,7 @@ interface FloorCanvasProps {
   onWindowEndpointMove?: (windowId: string, endpoint: 'start' | 'end', position: Point) => void
   onWindowMove?: (windowId: string, start: Point, end: Point) => void
   onFixtureMove?: (fixtureId: string, position: Point) => void
-  onFixtureResize?: (fixtureId: string, corner: FixtureCorner, position: Point) => void
+  onFixtureResize?: (fixtureId: string, corner: FixtureCorner, position: Point, start: Fixture) => void
   onTextMove?: (textId: string, position: Point) => void
   /** 追加配置モード時のクリック（floor 座標） */
   placeMode?: boolean
@@ -460,7 +460,7 @@ export function FloorCanvas({
                 onMove={(pos) => onFixtureMove(selectedFixture.id, pos)}
                 onResize={
                   onFixtureResize
-                    ? (corner, pos) => onFixtureResize(selectedFixture.id, corner, pos)
+                    ? (corner, pos, start) => onFixtureResize(selectedFixture.id, corner, pos, start)
                     : undefined
                 }
               />

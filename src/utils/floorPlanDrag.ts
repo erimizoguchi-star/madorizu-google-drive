@@ -1,4 +1,4 @@
-import type { Floor, FloorPlan, Point, Wall, Window } from '../types/floorPlan'
+import type { Fixture, Floor, FloorPlan, Point, Wall, Window } from '../types/floorPlan'
 import { snapDoorOntoNearestWall, snapWindowOntoNearestWall } from './floorPlanAdd'
 import { mmToSvgUnits, snapSvgToMmGrid, svgUnitsToMm } from './roomGeometry'
 
@@ -392,43 +392,57 @@ function snapFixtureValue(v: number): number {
 const FIXTURE_SNAP_MM = 10
 const FIXTURE_MIN_SIZE_SVG = mmToSvgUnits(100)
 
+/** 設備の大きさの上限（車でも 5m 程度。数値の暴走で画面の外まで広がらないように） */
+const FIXTURE_MAX_SIZE_SVG = mmToSvgUnits(10000)
+
+/**
+ * 設備の角をドラッグして大きさを変える。
+ *
+ * start（ドラッグを始めた時点の設備）を基準に、掴んだ角の反対側の角を画面上で固定し、
+ * カーソルとの間を新しい大きさにする。毎回 start から計算するので、回転していても誤差が積み重ならない。
+ * （以前は「今の設備の中心」でカーソルの回転を戻していたため、回転した設備では大きさが変わるたびに中心が動き、
+ *  その誤差が増幅して幅が数億 mm まで膨らんでいた）
+ *
+ * cursorFloor はカーソルの位置（間取図の座標。回転は戻さない）。start を省くと今の設備を基準にする。
+ */
 export function resizeFixtureCorner(
   floorPlan: FloorPlan,
   ref: FloorRef & { fixtureId: string },
   corner: FixtureCorner,
-  positionFloor: Point
+  cursorFloor: Point,
+  start?: Fixture
 ): FloorPlan {
   return updateFloor(floorPlan, ref, (floor) => ({
     ...floor,
     fixtures: floor.fixtures.map((fixture) => {
       if (fixture.id !== ref.fixtureId) return fixture
+      const base = start ?? fixture
+      const rad = ((base.angle ?? 0) * Math.PI) / 180
+      const cos = Math.cos(rad)
+      const sin = Math.sin(rad)
+      const rotate = (v: Point): Point => ({ x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos })
+      const unrotate = (v: Point): Point => ({ x: v.x * cos + v.y * sin, y: -v.x * sin + v.y * cos })
 
-      const left = fixture.position.x
-      const top = fixture.position.y
-      const right = left + fixture.width
-      const bottom = top + fixture.height
+      // 掴んだ角の向き（設備自身の向きで見て、右・下なら +1）
+      const sx = corner === 'ne' || corner === 'se' ? 1 : -1
+      const sy = corner === 'se' || corner === 'sw' ? 1 : -1
+      const center = { x: base.position.x + base.width / 2, y: base.position.y + base.height / 2 }
+      // 反対側の角（ここは動かさない）
+      const opposite = rotate({ x: (-sx * base.width) / 2, y: (-sy * base.height) / 2 })
+      const anchor = { x: center.x + opposite.x, y: center.y + opposite.y }
+      // 固定した角からカーソルまでを、設備自身の向きで測る
+      const local = unrotate({ x: cursorFloor.x - anchor.x, y: cursorFloor.y - anchor.y })
+      const clampSize = (v: number) =>
+        Math.min(FIXTURE_MAX_SIZE_SVG, Math.max(FIXTURE_MIN_SIZE_SVG, snapFixtureValue(v)))
+      const width = clampSize(sx * local.x)
+      const height = clampSize(sy * local.y)
 
-      // ドラッグしていない側の辺は固定したまま、掴んだ角だけを動かす
-      const anchorX = corner === 'nw' || corner === 'sw' ? right : left
-      const anchorY = corner === 'nw' || corner === 'ne' ? bottom : top
-      const movedX = snapFixtureValue(positionFloor.x)
-      const movedY = snapFixtureValue(positionFloor.y)
-
-      const minX = Math.min(anchorX, movedX)
-      const maxX = Math.max(anchorX, movedX)
-      const minY = Math.min(anchorY, movedY)
-      const maxY = Math.max(anchorY, movedY)
-
-      const width = Math.max(FIXTURE_MIN_SIZE_SVG, maxX - minX)
-      const height = Math.max(FIXTURE_MIN_SIZE_SVG, maxY - minY)
-
-      // 最小サイズに張り付いたときも、固定側の辺は動かさない
-      const x = movedX < anchorX ? anchorX - width : anchorX
-      const y = movedY < anchorY ? anchorY - height : anchorY
-
+      // 新しい中心 = 固定した角 + 回転させた（大きさの半分）。描画は中心まわりに回転するので位置は中心から戻す
+      const half = rotate({ x: (sx * width) / 2, y: (sy * height) / 2 })
+      const nextCenter = { x: anchor.x + half.x, y: anchor.y + half.y }
       return {
         ...fixture,
-        position: { x: round(x), y: round(y) },
+        position: { x: round(nextCenter.x - width / 2), y: round(nextCenter.y - height / 2) },
         width: round(width),
         height: round(height),
       }

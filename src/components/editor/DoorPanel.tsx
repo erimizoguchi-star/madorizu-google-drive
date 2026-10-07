@@ -13,6 +13,7 @@ import {
   updateDoor,
 } from '../../utils/floorPlanEdit'
 import { svgUnitsToMm } from '../../utils/roomGeometry'
+import { NumberField } from '../NumberField'
 
 interface DoorPanelProps {
   floorPlan: FloorPlan
@@ -66,18 +67,13 @@ export function DoorPanel({ floorPlan, selected, onSelect, onChange }: DoorPanel
           </div>
           <div className="editor-field">
             <label htmlFor="door-width">幅（mm）</label>
-            <input
+            <NumberField
               id="door-width"
-              type="number"
               step={50}
               min={300}
               max={3000}
-              value={Math.round(svgUnitsToMm(currentDoor.door.width))}
-              onChange={(e) => {
-                const widthMm = parseInt(e.target.value, 10)
-                if (Number.isNaN(widthMm)) return
-                handleDoorField({ widthMm })
-              }}
+              value={svgUnitsToMm(currentDoor.door.width)}
+              onCommit={(widthMm) => widthMm != null && handleDoorField({ widthMm })}
             />
             <p className="editor-field-hint">開口の幅です。壁の長さを超えない範囲で自動調整されます。</p>
           </div>

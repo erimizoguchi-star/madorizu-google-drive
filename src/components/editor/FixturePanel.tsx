@@ -13,6 +13,7 @@ import {
   updateFixture,
 } from '../../utils/floorPlanEdit'
 import { svgUnitsToMm } from '../../utils/roomGeometry'
+import { NumberField } from '../NumberField'
 
 interface FixturePanelProps {
   floorPlan: FloorPlan
@@ -63,34 +64,24 @@ export function FixturePanel({ floorPlan, selected, onSelect, onChange }: Fixtur
           <div className="editor-field-row">
             <div className="editor-field">
               <label htmlFor="fixture-width">幅（mm）</label>
-              <input
+              <NumberField
                 id="fixture-width"
-                type="number"
                 step={10}
                 min={100}
-                max={6000}
-                value={Math.round(svgUnitsToMm(currentFixture.fixture.width))}
-                onChange={(e) => {
-                  const widthMm = parseInt(e.target.value, 10)
-                  if (Number.isNaN(widthMm) || widthMm <= 0) return
-                  applyPlan((prev) => updateFixture(prev, selected, { widthMm }))
-                }}
+                max={10000}
+                value={svgUnitsToMm(currentFixture.fixture.width)}
+                onCommit={(widthMm) => widthMm != null && applyPlan((prev) => updateFixture(prev, selected, { widthMm }))}
               />
             </div>
             <div className="editor-field">
               <label htmlFor="fixture-height">奥行き（mm）</label>
-              <input
+              <NumberField
                 id="fixture-height"
-                type="number"
                 step={10}
                 min={100}
-                max={6000}
-                value={Math.round(svgUnitsToMm(currentFixture.fixture.height))}
-                onChange={(e) => {
-                  const heightMm = parseInt(e.target.value, 10)
-                  if (Number.isNaN(heightMm) || heightMm <= 0) return
-                  applyPlan((prev) => updateFixture(prev, selected, { heightMm }))
-                }}
+                max={10000}
+                value={svgUnitsToMm(currentFixture.fixture.height)}
+                onCommit={(heightMm) => heightMm != null && applyPlan((prev) => updateFixture(prev, selected, { heightMm }))}
               />
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
 } from '../../utils/floorPlanEdit'
 import { hasWindowDirection } from '../../utils/windowOrientation'
 import { svgUnitsToMm } from '../../utils/roomGeometry'
+import { NumberField } from '../NumberField'
 
 interface WindowPanelProps {
   floorPlan: FloorPlan
@@ -69,18 +70,13 @@ export function WindowPanel({ floorPlan, selected, onSelect, onChange }: WindowP
           </div>
           <div className="editor-field">
             <label htmlFor="window-width">幅（mm）</label>
-            <input
+            <NumberField
               id="window-width"
-              type="number"
               step={50}
               min={300}
               max={6000}
               value={widthMm}
-              onChange={(e) => {
-                const next = parseInt(e.target.value, 10)
-                if (Number.isNaN(next)) return
-                handleWindowField({ widthMm: next })
-              }}
+              onCommit={(next) => next != null && handleWindowField({ widthMm: next })}
             />
           </div>
 

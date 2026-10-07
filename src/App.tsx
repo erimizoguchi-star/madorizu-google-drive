@@ -959,8 +959,8 @@ function App() {
                 onTextMove={(ref, position) => {
                   commit((plan) => moveTextLabel(plan, ref, position), { coalesce: true })
                 }}
-                onFixtureResize={(ref, corner, position) => {
-                  commit((plan) => resizeFixtureCorner(plan, ref, corner, position), {
+                onFixtureResize={(ref, corner, position, start) => {
+                  commit((plan) => resizeFixtureCorner(plan, ref, corner, position, start), {
                     coalesce: true,
                   })
                 }}

@@ -26,6 +26,7 @@ import {
   parseAxisAlignedRect,
 } from '../../utils/roomGeometry'
 import { OffsetFields } from './OffsetFields'
+import { NumberField } from '../NumberField'
 
 interface RoomPanelProps {
   floorPlan: FloorPlan
@@ -125,17 +126,15 @@ export function RoomPanel({ floorPlan, selected, onSelect, onChange }: RoomPanel
           ) : (
             <div className="editor-field">
               <label htmlFor="room-area">帖数</label>
-              <input
+              <NumberField
                 id="room-area"
-                type="number"
-                step="0.1"
-                min="0"
+                step={0.1}
+                min={0}
+                digits={2}
+                allowEmpty
                 placeholder="空欄で自動計算"
-                value={currentRoom.room.areaJo ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value
-                  handleRoomField({ areaJo: val === '' ? null : parseFloat(val) })
-                }}
+                value={currentRoom.room.areaJo ?? null}
+                onCommit={(areaJo) => handleRoomField({ areaJo })}
               />
               <label className="editor-checkbox">
                 <input
@@ -157,30 +156,20 @@ export function RoomPanel({ floorPlan, selected, onSelect, onChange }: RoomPanel
               <div className="editor-size-inputs">
                 <label>
                   幅（mm）
-                  <input
-                    type="number"
+                  <NumberField
                     step={50}
                     min={MIN_ROOM_SIZE_MM}
                     value={roomDimensions.widthMm}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10)
-                      if (Number.isNaN(val)) return
-                      handleRoomSize({ widthMm: val })
-                    }}
+                    onCommit={(widthMm) => widthMm != null && handleRoomSize({ widthMm })}
                   />
                 </label>
                 <label>
                   奥行（mm）
-                  <input
-                    type="number"
+                  <NumberField
                     step={50}
                     min={MIN_ROOM_SIZE_MM}
                     value={roomDimensions.heightMm}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10)
-                      if (Number.isNaN(val)) return
-                      handleRoomSize({ heightMm: val })
-                    }}
+                    onCommit={(heightMm) => heightMm != null && handleRoomSize({ heightMm })}
                   />
                 </label>
               </div>

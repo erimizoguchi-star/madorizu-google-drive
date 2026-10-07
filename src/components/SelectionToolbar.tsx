@@ -15,6 +15,7 @@ import {
 } from '../utils/floorPlanEdit'
 import { svgUnitsToMm } from '../utils/roomGeometry'
 import { hasWindowDirection } from '../utils/windowOrientation'
+import { NumberField } from './NumberField'
 
 type Updater = (prev: FloorPlan) => FloorPlan
 
@@ -110,19 +111,15 @@ function RoomToolbar({
       />
       {!isAreaJoHiddenByType(room.type) && (
         <label className="selection-toolbar__width">
-          <input
-            type="number"
+          <NumberField
             step={0.5}
             min={0}
+            digits={2}
+            allowEmpty
             aria-label="帖数"
             placeholder="自動"
-            value={room.areaJo ?? ''}
-            onChange={(e) => {
-              const val = e.target.value
-              onChange((prev) => updateRoom(prev, selected, { areaJo: val === '' ? null : parseFloat(val) }), {
-                coalesce: true,
-              })
-            }}
+            value={room.areaJo ?? null}
+            onCommit={(areaJo) => onChange((prev) => updateRoom(prev, selected, { areaJo }))}
           />
           帖
         </label>
@@ -170,7 +167,7 @@ function DoorToolbar({
       <WidthField
         valueMm={Math.round(svgUnitsToMm(door.width))}
         max={3000}
-        onChange={(widthMm) => onChange((prev) => updateDoor(prev, selected, { widthMm }), { coalesce: true })}
+        onChange={(widthMm) => onChange((prev) => updateDoor(prev, selected, { widthMm }))}
       />
       <button type="button" className="selection-toolbar__btn is-danger" title="削除（Delete キー）" onClick={onDelete}>
         削除
@@ -215,7 +212,7 @@ function WindowToolbar({
       <WidthField
         valueMm={widthMm}
         max={6000}
-        onChange={(next) => onChange((prev) => updateWindow(prev, selected, { widthMm: next }), { coalesce: true })}
+        onChange={(next) => onChange((prev) => updateWindow(prev, selected, { widthMm: next }))}
       />
       <button type="button" className="selection-toolbar__btn is-danger" title="削除（Delete キー）" onClick={onDelete}>
         削除
@@ -228,17 +225,7 @@ function WidthField({ valueMm, max, onChange }: { valueMm: number; max: number; 
   return (
     <label className="selection-toolbar__width">
       幅
-      <input
-        type="number"
-        step={50}
-        min={300}
-        max={max}
-        value={valueMm}
-        onChange={(e) => {
-          const next = parseInt(e.target.value, 10)
-          if (!Number.isNaN(next)) onChange(next)
-        }}
-      />
+      <NumberField step={50} min={300} max={max} value={valueMm} onCommit={(next) => next != null && onChange(next)} />
       mm
     </label>
   )

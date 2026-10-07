@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import type { FloorPlan } from '../types/floorPlan'
+import type { Fixture, FloorPlan } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import { ZoomableView } from '../components/ZoomableView'
 import type { SourceOverlayState } from '../components/SourceOverlayControls'
@@ -59,7 +59,8 @@ interface FloorPlanViewProps {
   onFixtureResize?: (
     ref: SelectedElementRef & { kind: 'fixture' },
     corner: FixtureCorner,
-    position: Point
+    position: Point,
+    start: Fixture
   ) => void
   onPlaceClick?: (floorId: string, position: Point) => void
   /** アップロードした平面図を重ねて表示する設定 */
@@ -765,11 +766,12 @@ export function FloorPlanView({
               }
               onFixtureResize={
                 onFixtureResize && editable && !locked
-                  ? (fixtureId, corner, position) =>
+                  ? (fixtureId, corner, position, start) =>
                       onFixtureResize(
                         { kind: 'fixture', floorId: floor.id, fixtureId },
                         corner,
-                        position
+                        position,
+                        start
                       )
                   : undefined
               }

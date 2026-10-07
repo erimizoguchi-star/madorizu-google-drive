@@ -16,6 +16,7 @@ import {
 import { getStairLengthMm, STAIR_DEFAULT_WIDTH_MM } from '../../utils/resizeStair'
 import { mmToSvgUnits } from '../../utils/roomGeometry'
 import { OffsetFields } from './OffsetFields'
+import { NumberField } from '../NumberField'
 
 interface StairPanelProps {
   floorPlan: FloorPlan
@@ -54,36 +55,26 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
 
           <div className="editor-field">
             <label htmlFor="stair-width">幅（mm）</label>
-            <input
+            <NumberField
               id="stair-width"
-              type="number"
               min={600}
               max={1500}
               step={10}
               value={currentStair.stair.widthMm ?? STAIR_DEFAULT_WIDTH_MM}
-              onChange={(e) => {
-                const widthMm = Number(e.target.value)
-                if (!Number.isFinite(widthMm) || widthMm <= 0) return
-                handleStairField({ widthMm })
-              }}
+              onCommit={(widthMm) => widthMm != null && handleStairField({ widthMm })}
             />
             <p className="editor-field-hint">標準幅は {STAIR_DEFAULT_WIDTH_MM}mm です。</p>
           </div>
 
           <div className="editor-field">
             <label htmlFor="stair-length">長さ（mm）</label>
-            <input
+            <NumberField
               id="stair-length"
-              type="number"
               min={900}
               max={9000}
               step={50}
               value={getStairLengthMm(currentStair.stair)}
-              onChange={(e) => {
-                const lengthMm = Number(e.target.value)
-                if (!Number.isFinite(lengthMm) || lengthMm <= 0) return
-                handleStairField({ lengthMm })
-              }}
+              onCommit={(lengthMm) => lengthMm != null && handleStairField({ lengthMm })}
             />
             <p className="editor-field-hint">上り方向の長さです。上り始め側は動きません。</p>
           </div>
