@@ -1,10 +1,11 @@
-import { useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import type { Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
 import { CANVAS } from './styles'
 import { DoorRenderer } from './DoorRenderer'
 import { doorPaintExtentPoints } from './doorPaintBounds'
+import { FLOOR_CANVAS_PADDING, getFloorBounds } from './floorCanvasGeometry'
 import { FixtureRenderer } from './FixtureRenderer'
 import { NorthArrow } from './NorthArrow'
 import { RoomLabels } from './RoomLabels'
@@ -67,64 +68,13 @@ interface FloorCanvasProps {
   selectionToolbar?: ReactNode
   /** 部屋（または部屋名）をダブルクリックしたとき。名前をすぐ打ち込めるようにする */
   onRoomDoubleClick?: (roomId: string) => void
-}
-
-/** 壁の外へ張り出して描く窓の、張り出しの先端（両側。どちらが外かはここでは区別しない） */
-function windowProjectionPoints(win: Floor['windows'][number]): Point[] {
-  if (win.kind !== 'awning' && win.kind !== 'fix_casement') return []
-  const dx = win.end.x - win.start.x
-  const dy = win.end.y - win.start.y
-  const len = Math.hypot(dx, dy)
-  if (len === 0) return []
-  const reach = 50
-  const nx = (-dy / len) * reach
-  const ny = (dx / len) * reach
-  return [win.start, win.end].flatMap((p) => [
-    { x: p.x + nx, y: p.y + ny },
-    { x: p.x - nx, y: p.y - ny },
-  ])
-}
-
-function getBounds(floor: Floor) {
-  const allPoints = [
-    ...floor.rooms.flatMap((r) => r.polygon ?? []),
-    ...floor.walls.flatMap((w) => [w.start, w.end]),
-    // 開き弧・戸先など壁外にはみ出す記号も含める（位置点だけだと viewBox で切れる）
-    ...floor.doors.flatMap((d) => doorPaintExtentPoints(d)),
-    // 横すべり出し・FIX＋両端すべり出しは壁の外へ張り出して描くので、その分も含める（含めないと図面の端で切れる）
-    ...floor.windows.flatMap((w) => [w.start, w.end, ...windowProjectionPoints(w)]),
-    ...floor.fixtures.flatMap((f) => [
-      f.position,
-      { x: f.position.x + f.width, y: f.position.y + f.height },
-    ]),
-    ...floor.stairs.flatMap((s) => s.polygon ?? []),
-    ...(floor.texts ?? []).map((t) => t.position),
-  ].filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
-
-  if (allPoints.length === 0) {
-    return { minX: 0, minY: 0, maxX: 100, maxY: 100 }
-  }
-
-  const xs = allPoints.map((p) => p.x)
-  const ys = allPoints.map((p) => p.y)
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
-
-  if (!Number.isFinite(minX) || !Number.isFinite(maxX) || maxX - minX < 1) {
-    return { minX: 0, minY: 0, maxX: 100, maxY: 100 }
-  }
-  if (!Number.isFinite(minY) || !Number.isFinite(maxY) || maxY - minY < 1) {
-    return { minX, minY: 0, maxX, maxY: 100 }
-  }
-
-  return { minX, minY, maxX, maxY }
+  /** 階を並べるときの位置合わせ（建物の外形をそろえるための余白） */
+  wrapperStyle?: CSSProperties
 }
 
 export function FloorCanvas({
   floor,
-  padding = 36,
+  padding = FLOOR_CANVAS_PADDING,
   editable,
   mergeRoomIds,
   selectedRoomId,
@@ -160,15 +110,16 @@ export function FloorCanvas({
   onGridLineDrag,
   selectionToolbar,
   onRoomDoubleClick,
+  wrapperStyle,
 }: FloorCanvasProps) {
   // ドラッグ中に描画範囲が変わると図面が伸縮し、掴んだ要素がカーソルから離れてしまう。
   // ドラッグしている間は範囲を固定し、離した時点で新しい範囲に合わせ直す。
   const dragging = useSyncExternalStore(subscribeSvgDrag, isSvgDragging, () => false)
-  const liveBounds = getBounds(floor)
+  const liveBounds = getFloorBounds(floor)
   // dragging が false→true に変わった瞬間の範囲を memo に固定する。
   // ドラッグ中は floor が変わっても再計算されないのが狙いなので、floor は依存に入れない
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const boundsAtDragStart = useMemo(() => getBounds(floor), [dragging])
+  const boundsAtDragStart = useMemo(() => getFloorBounds(floor), [dragging])
   const bounds = dragging ? boundsAtDragStart : liveBounds
 
   const width = bounds.maxX - bounds.minX + padding * 2
@@ -265,7 +216,7 @@ export function FloorCanvas({
       : null
 
   return (
-    <div className="floor-canvas-wrapper">
+    <div className="floor-canvas-wrapper" style={wrapperStyle}>
       <div className="floor-label">{floor.label}</div>
       <div className="floor-canvas-stage">
         <svg
@@ -277,6 +228,18 @@ export function FloorCanvas({
           // 出力（PNG / PDF など）で、階が複数あるとき各階の下に階名を描くために使う
           data-floor-label={floor.label}
           data-building-corner={buildingCorner}
+          // 建物（部屋の範囲）の左上・右下。平面図の位置合わせ（2点合わせなど）に使う。
+          // 見た目の範囲（getBBox）は床模様の切り抜き前の線まで含んで建物より広くなるので、座標から求める
+          data-building-box={
+            roomPoints.length > 0
+              ? [
+                  Math.min(...roomPoints.map((p) => p.x)),
+                  Math.min(...roomPoints.map((p) => p.y)),
+                  Math.max(...roomPoints.map((p) => p.x)),
+                  Math.max(...roomPoints.map((p) => p.y)),
+                ].join(',')
+              : undefined
+          }
           // 間取図の座標 (0,0) が SVG のどこに来るか。描画範囲が変わると動くので、重ねた平面図を追従させるのに使う
           data-origin={`${offsetX},${offsetY}`}
           data-floor-id={floor.id}

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { FloorPlan } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import { ZoomableView } from '../components/ZoomableView'
@@ -14,6 +14,9 @@ import type { FixtureCorner } from '../utils/floorPlanDrag'
 import type { RectEdge } from '../utils/roomGeometry'
 import type { LabelLineKind } from './roomLabelLayout'
 import { FloorCanvas } from './FloorCanvas'
+import { floorCanvasGeometry } from './floorCanvasGeometry'
+import { isSvgDragging, subscribeSvgDrag } from './svgCoords'
+import { buildingBox } from '../utils/floorArrange'
 import type { GridSnapKind } from './GridLinesLayer'
 import { collectGridLines, type GridAxis } from '../utils/gridLines'
 import { darkMapFromImage, findLineNear, type DarkMap } from '../utils/imageLines'
@@ -120,6 +123,28 @@ function placeHint(kind: PlaceKind): string {
   return BASE_PLACE_HINTS[kind]
 }
 
+/**
+ * 階を並べるとき、建物の外形をそろえるための各階の余白（px）。
+ * 図面の端ではなく建物でそろえる（車などの設備で余白が大きい階があっても建物の上端・下端がそろう）。
+ * 横並びなら上の余白、縦並びなら左の余白。
+ */
+function floorAlignOffsets(floorPlan: FloorPlan): number[] {
+  const direction = floorPlan.layout?.direction ?? 'row'
+  const align = floorPlan.layout?.align ?? 'start'
+  const spans = floorPlan.floors.map((floor) => {
+    const box = buildingBox(floor)
+    if (!box) return null
+    const g = floorCanvasGeometry(floor)
+    return direction === 'row'
+      ? { lo: box.minY + g.offsetY, hi: box.maxY + g.offsetY }
+      : { lo: box.minX + g.offsetX, hi: box.maxX + g.offsetX }
+  })
+  const key = (s: { lo: number; hi: number }) => (align === 'start' ? s.lo : align === 'end' ? s.hi : (s.lo + s.hi) / 2)
+  const keys = spans.map((s) => (s ? key(s) : null))
+  const target = Math.max(0, ...keys.filter((k): k is number => k != null))
+  return keys.map((k) => (k == null ? 0 : target - k))
+}
+
 /** 平面図を重ねる階の間取図（SVG）。見つからなければ1つ目の階 */
 function findOverlayFloorSvg(container: HTMLElement | null, floorId: string | undefined): SVGSVGElement | null {
   if (!container) return null
@@ -131,18 +156,16 @@ function findOverlayFloorSvg(container: HTMLElement | null, floorId: string | un
 
 /** 間取図の建物（その階の部屋全体）の画面上の矩形 */
 function planRectOnScreen(svg: SVGSVGElement | null) {
-  const layer = svg?.querySelector('.rooms-layer') as SVGGElement | null
-  if (!layer) return null
-  const box = layer.getBBox()
-  const ctm = layer.getScreenCTM()
-  if (!ctm || box.width < 1 || box.height < 1) return null
+  // 見た目の範囲（getBBox）は床模様の切り抜き前の線まで含み、建物より広くなる（2点合わせがずれる）。
+  // FloorCanvas が部屋の座標から求めた範囲を使う
+  const [minX, minY, maxX, maxY] = (svg?.dataset.buildingBox ?? '').split(',').map(Number)
+  const ctm = svg?.getScreenCTM()
+  if (!ctm || ![minX, minY, maxX, maxY].every(Number.isFinite) || maxX - minX < 1 || maxY - minY < 1) return null
   const toScreen = (x: number, y: number) => ({
     x: ctm.a * x + ctm.c * y + ctm.e,
     y: ctm.b * x + ctm.d * y + ctm.f,
   })
-  const p1 = toScreen(box.x, box.y)
-  const p2 = toScreen(box.x + box.width, box.y + box.height)
-  return { p1, p2 }
+  return { p1: toScreen(minX, minY), p2: toScreen(maxX, maxY) }
 }
 
 export function FloorPlanView({
@@ -185,6 +208,14 @@ export function FloorPlanView({
   // 配置中・平面図の位置合わせ中・線を合わせる中は、部屋などの選択や編集を止める
   const locked = placing || adjustingOverlay || !!aligning
   const floorsRef = useRef<HTMLDivElement | null>(null)
+  // 階の並べ方。ドラッグ中は位置合わせの余白を固定する（変わると掴んでいる要素が指から離れる）。
+  // FloorCanvas の描画範囲と同じく、ドラッグを始めた時点の値を覚え、離したら合わせ直す
+  const dragging = useSyncExternalStore(subscribeSvgDrag, isSvgDragging, () => false)
+  const liveAlignOffsets = floorAlignOffsets(floorPlan)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const alignOffsetsAtDragStart = useMemo(() => floorAlignOffsets(floorPlan), [dragging])
+  const alignOffsets = dragging ? alignOffsetsAtDragStart : liveAlignOffsets
+  const layoutDirection = floorPlan.layout?.direction ?? 'row'
   const [calibFirst, setCalibFirst] = useState<{ client: Point; local: Point } | null>(null)
 
   // 2点合わせを終了・中断したら1点目の記録を破棄する。
@@ -506,7 +537,10 @@ export function FloorPlanView({
         className="floor-plan-zoom"
         fitKey={fitKey}
       >
-        <div className="floors-container" ref={floorsRef}>
+        <div
+          className={`floors-container floors-container-${layoutDirection}`}
+          ref={floorsRef}
+        >
           {overlay?.enabled && overlayUrl && (
             <>
               <img
@@ -537,10 +571,15 @@ export function FloorPlanView({
               )}
             </>
           )}
-          {floorPlan.floors.map((floor) => (
+          {floorPlan.floors.map((floor, floorIndex) => (
             <FloorCanvas
               key={floor.id}
               floor={floor}
+              wrapperStyle={
+                layoutDirection === 'row'
+                  ? { marginTop: alignOffsets[floorIndex] ?? 0 }
+                  : { marginLeft: alignOffsets[floorIndex] ?? 0 }
+              }
               editable={editable && !locked}
               mergeRoomIds={
                 mergeRoomIds?.floorId === floor.id ? mergeRoomIds.roomIds : undefined

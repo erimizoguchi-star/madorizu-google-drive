@@ -208,9 +208,19 @@ export interface Floor {
   texts?: TextLabel[]
 }
 
+/** 階の並べ方（画面と出力の両方に使う） */
+export interface FloorLayout {
+  /** row = 横に並べる（既定）、column = 縦に並べる */
+  direction?: 'row' | 'column'
+  /** 建物の外形をそろえる位置。横並びなら上・中央・下、縦並びなら左・中央・右（既定 start） */
+  align?: 'start' | 'center' | 'end'
+}
+
 export interface FloorPlan {
   title: string
   floors: Floor[]
+  /** 階の並べ方（省略時は横並び・上そろえ） */
+  layout?: FloorLayout
   /** 1単位 = 何mm か（デフォルト 100mm） */
   scaleMm?: number
   /**

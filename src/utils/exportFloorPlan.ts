@@ -42,130 +42,142 @@ function downloadBlob(blob: Blob, name: string) {
   URL.revokeObjectURL(url)
 }
 
-function buildCombinedSvg(container: HTMLElement): SVGSVGElement | null {
-  const svgs = container.querySelectorAll('svg')
+/** 出力する1つの階：図面（SVG）と、並べた位置・大きさ・階名 */
+interface PlacedFloor {
+  svg: SVGSVGElement
+  x: number
+  y: number
+  width: number
+  height: number
+  label: string | null
+  labelAnchor: { x: number; y: number } | null
+}
+
+/**
+ * 各階を並べた位置を、画面で並んでいる位置からそのまま写し取る（並べ方・そろえ方を画面と出力で一致させる）。
+ * 画面に出ていないとき（大きさが測れないとき）は、従来どおり上をそろえて横に並べる。
+ * 位置は図面の単位（1単位 = 1px で描いているので、画面の px を拡大率で割った値）。
+ */
+function placeFloors(container: HTMLElement): { floors: PlacedFloor[]; width: number; height: number } | null {
+  const svgs = Array.from(container.querySelectorAll<SVGSVGElement>('svg.floor-canvas'))
   if (svgs.length === 0) return null
+  const labels = floorLabelsOf(svgs)
+
+  const stage = svgs[0].closest('.floors-container') as HTMLElement | null
+  const rects = svgs.map((svg) => svg.getBoundingClientRect())
+  const zoom = stage && stage.offsetWidth > 0 ? stage.getBoundingClientRect().width / stage.offsetWidth : 0
+  const measurable = zoom > 0 && rects.every((r) => r.width > 0)
+  const minLeft = Math.min(...rects.map((r) => r.left))
+  const minTop = Math.min(...rects.map((r) => r.top))
+
+  let nextX = 0
+  const floors = svgs.map((svg, i): PlacedFloor => {
+    const vb = svg.viewBox.baseVal
+    const x = measurable ? (rects[i].left - minLeft) / zoom : nextX
+    const y = measurable ? (rects[i].top - minTop) / zoom : 0
+    nextX += vb.width + FLOOR_GAP
+    return {
+      svg,
+      x,
+      y,
+      width: vb.width,
+      height: vb.height,
+      label: labels?.[i] || null,
+      labelAnchor: labels?.[i] ? floorLabelAnchor(svg) : null,
+    }
+  })
+
+  const width = Math.max(...floors.map((f) => f.x + f.width))
+  const height =
+    Math.max(...floors.map((f) => f.y + Math.max(f.height, f.labelAnchor ? f.labelAnchor.y : 0))) +
+    (labels ? FLOOR_LABEL_BAND : 0)
+  return { floors, width, height }
+}
+
+function buildCombinedSvg(container: HTMLElement): SVGSVGElement | null {
+  const placed = placeFloors(container)
+  if (!placed) return null
 
   const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  const labels = floorLabelsOf(svgs)
-  let totalWidth = 0
-  let maxHeight = 0
-
-  svgs.forEach((svg, i) => {
-    const clone = svg.cloneNode(true) as SVGSVGElement
-    const vb = svg.viewBox.baseVal
+  for (const floor of placed.floors) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    g.setAttribute('transform', `translate(${totalWidth}, 0)`)
-    g.appendChild(clone)
-    if (labels?.[i]) {
-      const anchor = floorLabelAnchor(svg)
-      maxHeight = Math.max(maxHeight, anchor.y)
+    g.setAttribute('transform', `translate(${floor.x}, ${floor.y})`)
+    g.appendChild(floor.svg.cloneNode(true))
+    if (floor.label && floor.labelAnchor) {
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-      text.setAttribute('x', String(anchor.x))
-      text.setAttribute('y', String(anchor.y))
+      text.setAttribute('x', String(floor.labelAnchor.x))
+      text.setAttribute('y', String(floor.labelAnchor.y))
       text.setAttribute('text-anchor', 'end')
       text.setAttribute('font-family', LABEL.fontFamily)
       text.setAttribute('font-size', String(FLOOR_LABEL_SIZE))
       text.setAttribute('font-weight', '600')
       text.setAttribute('fill', FLOOR_LABEL_COLOR)
-      text.textContent = labels[i]
+      text.textContent = floor.label
       g.appendChild(text)
     }
     wrapper.appendChild(g)
-    totalWidth += vb.width + (i < svgs.length - 1 ? FLOOR_GAP : 0)
-    maxHeight = Math.max(maxHeight, vb.height)
-  })
-  if (labels) maxHeight += FLOOR_LABEL_BAND
+  }
 
-  wrapper.setAttribute('viewBox', `0 0 ${totalWidth} ${maxHeight}`)
-  wrapper.setAttribute('width', String(totalWidth))
-  wrapper.setAttribute('height', String(maxHeight))
+  wrapper.setAttribute('viewBox', `0 0 ${placed.width} ${placed.height}`)
+  wrapper.setAttribute('width', String(placed.width))
+  wrapper.setAttribute('height', String(placed.height))
   wrapper.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
   return wrapper
+}
+
+/** 1つの階の図面（SVG）を画像にする */
+async function renderSvg(svg: SVGSVGElement, width: number, height: number): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(
+    new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' })
+  )
+  const img = new Image()
+  img.width = width
+  img.height = height
+  try {
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('SVGの描画に失敗しました'))
+      img.src = url
+    })
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+  return img
 }
 
 export async function renderFloorPlanCanvas(targetId: string): Promise<HTMLCanvasElement | null> {
   const container = document.getElementById(targetId)
   if (!container) return null
+  const placed = placeFloors(container)
+  if (!placed) return null
 
-  const svgs = container.querySelectorAll('svg')
-  if (svgs.length === 0) return null
+  const images = await Promise.all(placed.floors.map((f) => renderSvg(f.svg, f.width, f.height)))
 
-  const labels = floorLabelsOf(svgs)
-  let totalWidth = 0
-  let maxHeight = 0
-  const canvases: HTMLCanvasElement[] = []
-  const anchors: { x: number; y: number }[] = []
-
-  for (const svg of svgs) {
-    const vb = svg.viewBox.baseVal
-    const canvas = document.createElement('canvas')
-    canvas.width = vb.width * EXPORT_SCALE
-    canvas.height = vb.height * EXPORT_SCALE
-    const ctx = canvas.getContext('2d')
-    if (!ctx) continue
-
-    ctx.scale(EXPORT_SCALE, EXPORT_SCALE)
-    ctx.fillStyle = CANVAS.background
-    ctx.fillRect(0, 0, vb.width, vb.height)
-
-    const svgData = new XMLSerializer().serializeToString(svg)
-    const img = new Image()
-    const url = URL.createObjectURL(new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' }))
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, vb.width, vb.height)
-        URL.revokeObjectURL(url)
-        resolve()
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(url)
-        reject(new Error('SVGの描画に失敗しました'))
-      }
-      img.src = url
-    })
-
-    canvases.push(canvas)
-    if (labels) {
-      const anchor = floorLabelAnchor(svg)
-      anchors.push(anchor)
-      maxHeight = Math.max(maxHeight, anchor.y)
-    }
-    totalWidth += vb.width + FLOOR_GAP
-    maxHeight = Math.max(maxHeight, vb.height)
-  }
-
-  if (labels) maxHeight += FLOOR_LABEL_BAND
-  const finalCanvas = document.createElement('canvas')
-  finalCanvas.width = (totalWidth - FLOOR_GAP) * EXPORT_SCALE
-  finalCanvas.height = maxHeight * EXPORT_SCALE
-  const ctx = finalCanvas.getContext('2d')
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(placed.width * EXPORT_SCALE)
+  canvas.height = Math.ceil(placed.height * EXPORT_SCALE)
+  const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
   ctx.scale(EXPORT_SCALE, EXPORT_SCALE)
   ctx.fillStyle = CANVAS.background
-  ctx.fillRect(0, 0, totalWidth - FLOOR_GAP, maxHeight)
+  ctx.fillRect(0, 0, placed.width, placed.height)
 
-  if (labels) await document.fonts?.ready
-  let x = 0
-  canvases.forEach((canvas, i) => {
-    const width = canvas.width / EXPORT_SCALE
-    const height = canvas.height / EXPORT_SCALE
-    ctx.drawImage(canvas, x, 0, width, height)
-    const anchor = anchors[i]
-    if (labels?.[i] && anchor) {
+  if (placed.floors.some((f) => f.label)) await document.fonts?.ready
+  placed.floors.forEach((floor, i) => {
+    ctx.drawImage(images[i], floor.x, floor.y, floor.width, floor.height)
+    if (floor.label && floor.labelAnchor) {
       ctx.save()
       ctx.font = `600 ${FLOOR_LABEL_SIZE}px ${LABEL.fontFamily}`
       ctx.fillStyle = FLOOR_LABEL_COLOR
       ctx.textAlign = 'right'
       ctx.textBaseline = 'alphabetic'
-      ctx.fillText(labels[i], x + anchor.x, anchor.y)
+      ctx.fillText(floor.label, floor.x + floor.labelAnchor.x, floor.y + floor.labelAnchor.y)
       ctx.restore()
     }
-    x += width + FLOOR_GAP
   })
 
-  return finalCanvas
+  return canvas
 }
 
 export function exportFloorPlanSvg(targetId: string, filename: string) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ExportButton } from './components/ExportButton'
 import { FloorsPanel } from './components/FloorsPanel'
+import { FloorArrangePanel } from './components/FloorArrangePanel'
 import { PlanChecksPanel } from './components/PlanChecksPanel'
 import { JsonDataButtons } from './components/JsonDataButtons'
 import { RoomEditor } from './components/RoomEditor'
@@ -558,6 +559,7 @@ function App() {
 
           {floorPlan && (
             <div className="sidebar-tab-panel" hidden={sidebarTab !== 'output'}>
+              <FloorArrangePanel floorPlan={floorPlan} onChange={(updater) => commit(updater)} />
               <ExportButton
                 targetId="madorizu-export"
                 filename={propertyLink ? `間取り図_${fileSafeName(propertyLink.name)}` : 'madorizu'}

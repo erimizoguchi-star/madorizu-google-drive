@@ -612,9 +612,21 @@ export function normalizeFloorPlan(plan: FloorPlan): FloorPlan {
     throw new Error('AIの応答に有効な部屋データが含まれていませんでした。別の画像で再試行してください。')
   }
 
+  const layout = sanitizeLayout(plan.layout)
   return {
     title: draft.title,
     scaleMm: draft.scaleMm,
     floors,
+    ...(layout ? { layout } : {}),
   }
+}
+
+/** 階の並べ方。知らない値は捨てる（保存した JSON を読み込んだときに並べ方が消えないよう引き継ぐ） */
+function sanitizeLayout(layout: unknown): FloorPlan['layout'] | undefined {
+  if (!layout || typeof layout !== 'object') return undefined
+  const { direction, align } = layout as Record<string, unknown>
+  const result: NonNullable<FloorPlan['layout']> = {}
+  if (direction === 'row' || direction === 'column') result.direction = direction
+  if (align === 'start' || align === 'center' || align === 'end') result.align = align
+  return Object.keys(result).length > 0 ? result : undefined
 }
