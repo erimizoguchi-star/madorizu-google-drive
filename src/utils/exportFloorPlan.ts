@@ -33,6 +33,28 @@ function floorLabelAnchor(svg: SVGSVGElement): { x: number; y: number } {
   return { x, y: y + FLOOR_LABEL_OFFSET }
 }
 
+/**
+ * 編集のときだけ使う目印（扉の中央の丸、クリック判定の線、取っ手、線合わせの線）。出力には写さない。
+ * 以前は扉の中央の灰色の丸が出力画像に写り込んでいた
+ */
+const EDIT_ONLY_SELECTOR = [
+  '.door-hit',
+  '.door-hit-line',
+  '.window-hit-line',
+  '.wall-hit-line',
+  '.fixture-hit',
+  '.edit-handles-layer',
+  '.resize-handles-layer',
+  '.grid-lines-layer',
+].join(', ')
+
+/** 出力用の写し（編集用の目印を取り除く） */
+function exportableClone(svg: SVGSVGElement): SVGSVGElement {
+  const clone = svg.cloneNode(true) as SVGSVGElement
+  clone.querySelectorAll(EDIT_ONLY_SELECTOR).forEach((el) => el.remove())
+  return clone
+}
+
 function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -102,7 +124,7 @@ function buildCombinedSvg(container: HTMLElement): SVGSVGElement | null {
   for (const floor of placed.floors) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     g.setAttribute('transform', `translate(${floor.x}, ${floor.y})`)
-    g.appendChild(floor.svg.cloneNode(true))
+    g.appendChild(exportableClone(floor.svg))
     if (floor.label && floor.labelAnchor) {
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
       text.setAttribute('x', String(floor.labelAnchor.x))
@@ -128,7 +150,7 @@ function buildCombinedSvg(container: HTMLElement): SVGSVGElement | null {
 /** 1つの階の図面（SVG）を画像にする */
 async function renderSvg(svg: SVGSVGElement, width: number, height: number): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(
-    new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' })
+    new Blob([new XMLSerializer().serializeToString(exportableClone(svg))], { type: 'image/svg+xml;charset=utf-8' })
   )
   const img = new Image()
   img.width = width

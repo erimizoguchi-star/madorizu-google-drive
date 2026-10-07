@@ -1497,6 +1497,14 @@
   margin-bottom: 0.75rem;
 }
 
+/*
+ * 部屋の模様（木目・タイル・畳目など）は細い線なので、縮小表示（40〜60%）では画面上 0.3px ほどになり消えていた。
+ * 画面では最低 0.8px の太さにする（出力は SVG の属性の太さのまま）
+ */
+.room-pattern line {
+  stroke-width: max(0.6px, calc(0.8px / var(--zoom, 1)));
+}
+
 .floor-canvas-stage {
   position: relative;
 }
