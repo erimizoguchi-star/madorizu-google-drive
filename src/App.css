@@ -1403,6 +1403,37 @@
   line-height: 1.5;
 }
 
+.autosave-restore {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.75rem;
+  border: 1px solid #E4C79A;
+  border-radius: var(--radius-md);
+  background: #FFF8EE;
+  font-size: 0.8125rem;
+}
+
+.autosave-restore > span {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.autosave-restore__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.autosave-status {
+  font-size: 0.75rem;
+  color: #2E8B57;
+  white-space: nowrap;
+}
+
+.autosave-status.is-error {
+  color: #8B5A52;
+}
+
 .sidebar-tabs {
   position: sticky;
   top: calc(-1 * var(--sidebar-pad-y, 1.5rem));

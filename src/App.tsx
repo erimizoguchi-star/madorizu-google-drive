@@ -17,6 +17,14 @@ import { ZoomableView } from './components/ZoomableView'
 import { FloorPlanView } from './renderer/FloorPlanView'
 import { LEGEND_ITEMS, ROOM_COLORS } from './renderer/styles'
 import { useFloorPlanHistory } from './hooks/useFloorPlanHistory'
+import { useAutosave } from './hooks/useAutosave'
+import {
+  autosaveKey,
+  clearAutosave,
+  describeAutosave,
+  loadAutosave,
+  type AutosaveRecord,
+} from './services/autosave'
 import type { AnalysisResult, FloorPlan, Point } from './types/floorPlan'
 import type { SelectedElementRef, SelectOptions } from './utils/floorPlanEdit'
 import {
@@ -110,6 +118,31 @@ function App() {
   const [floorSources, setFloorSources] = useState<Record<string, { url: string; fileName: string }>>({})
   /** 平面図を重ねる階 */
   const [overlayFloorId, setOverlayFloorId] = useState<string | null>(null)
+
+  // 自動保存。開いたときに前回の編集中の間取図があれば「続きから編集」を出す。
+  // 決めるまでは保存しない（前回の保存を、空の画面や別の図面で上書きしないため）
+  const saveKey = autosaveKey(propertyLink?.propertyId)
+  const [pendingRestore, setPendingRestore] = useState<AutosaveRecord | null>(null)
+  const [restoreChecked, setRestoreChecked] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void loadAutosave(saveKey).then((record) => {
+      if (cancelled) return
+      setPendingRestore(record)
+      setRestoreChecked(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [saveKey])
+  const autosave = useAutosave({
+    key: saveKey,
+    floorPlan,
+    floorSources,
+    sourcePreview,
+    overlayFloorId,
+    enabled: restoreChecked && !pendingRestore,
+  })
   const [analysisInfo, setAnalysisInfo] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   /** サイドバーの作業段階。編集タブを開いている間が「編集モード」 */
@@ -140,6 +173,7 @@ function App() {
   } | null>(null)
 
   const handleResult = (result: AnalysisResult, options: { append: boolean }) => {
+    setPendingRestore(null)
     if (options.append && floorPlan) {
       const appended = appendFloors(floorPlan, result.floorPlan)
       if ('error' in appended) {
@@ -184,6 +218,28 @@ function App() {
   }
 
   const editMode = !!floorPlan && sidebarTab === 'edit'
+
+  /** 自動保存から続きを開く。画像は保存した Blob から表示用の URL を作り直す */
+  const restoreAutosave = (record: AutosaveRecord) => {
+    const sources: Record<string, { url: string; fileName: string }> = {}
+    let latest: { url: string; fileName: string } | null = null
+    for (const source of record.sources) {
+      const entry = { url: URL.createObjectURL(source.blob), fileName: source.fileName }
+      for (const floorId of source.floorIds) sources[floorId] = entry
+      if (source.latest) latest = entry
+    }
+    setPendingRestore(null)
+    resetFloorPlan(record.floorPlan)
+    setFloorSources(sources)
+    setSourcePreview(latest ?? Object.values(sources)[0] ?? null)
+    setOverlayFloorId(record.overlayFloorId)
+    setAnalysisInfo(null)
+    setError(null)
+    setSelected(null)
+    setMergeRoomIds(null)
+    setPlaceKind(null)
+    setSidebarTab('edit')
+  }
   // 重ねる階（消された階を指していれば1つ目の階）と、その階の図面（覚えていなければ最後に読み込んだ図面）
   const overlayFloor =
     floorPlan?.floors.find((f) => f.id === overlayFloorId) ?? floorPlan?.floors[0] ?? null
@@ -442,6 +498,29 @@ function App() {
 
       <main className="app-main">
         <aside className={`sidebar ${panelHidden ? 'sidebar-collapsed' : ''}`}>
+          {pendingRestore && (
+            <div className="autosave-restore">
+              <strong>前回の編集中の間取図があります</strong>
+              <span>{describeAutosave(pendingRestore)}</span>
+              <div className="autosave-restore__actions">
+                <button type="button" className="btn btn-primary" onClick={() => restoreAutosave(pendingRestore)}>
+                  続きから編集
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    if (!window.confirm('前回の編集中の間取図を破棄しますか？（元に戻せません）')) return
+                    void clearAutosave(saveKey)
+                    setPendingRestore(null)
+                  }}
+                >
+                  破棄
+                </button>
+              </div>
+            </div>
+          )}
+
           {floorPlan && (
             <nav className="sidebar-tabs" role="tablist" aria-label="作業の段階">
               {SIDEBAR_TABS.map(({ key, label }) => (
@@ -583,6 +662,7 @@ function App() {
                 currentId={savedPlanId}
                 onCurrentIdChange={setSavedPlanId}
                 onLoad={(plan) => {
+                  setPendingRestore(null)
                   resetFloorPlan(plan)
                   setSidebarTab('edit')
                   setSelected(null)
@@ -593,6 +673,7 @@ function App() {
               <JsonDataButtons
                 floorPlan={floorPlan}
                 onImport={(plan) => {
+                  setPendingRestore(null)
                   resetFloorPlan(plan)
                   setSidebarTab('edit')
                   setSelected(null)
@@ -669,6 +750,16 @@ function App() {
                   >
                     削除
                   </button>
+                </span>
+              )}
+              {(autosave.savedAt || autosave.failed) && (
+                <span
+                  className={`autosave-status ${autosave.failed ? 'is-error' : ''}`}
+                  title="編集中の間取図は、このブラウザに自動で保存されます。再読み込みしても「続きから編集」で戻せます"
+                >
+                  {autosave.failed
+                    ? '⚠ 自動保存できませんでした'
+                    : `✓ 自動保存 ${autosave.savedAt!.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`}
                 </span>
               )}
               {/* 選択中は「選択中・削除」を優先し、帯が2段にならないよう説明を隠す */}
