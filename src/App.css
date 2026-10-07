@@ -876,6 +876,15 @@
   pointer-events: none;
 }
 
+/*
+ * 窓・扉のクリック判定の線だけは、上の「線は反応しない」から外す。
+ * 外さないと編集中は窓が選べず、クリックがその下の壁に吸われていた（扉も中央の丸でしか選べなかった）
+ */
+.floor-canvas-editable .windows-layer .window-hit-line,
+.floor-canvas-editable .doors-layer .door-hit-line {
+  pointer-events: stroke;
+}
+
 .floor-canvas-editable .labels-layer {
   pointer-events: auto;
 }

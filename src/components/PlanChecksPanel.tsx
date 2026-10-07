@@ -13,6 +13,8 @@ const ICONS: Record<PlanIssue['kind'], string> = {
   'window-off-wall': '🪟',
   'room-overlap': '⧉',
   'area-mismatch': '📐',
+  'wall-duplicate': '▤',
+  'wall-stray': '│',
 }
 
 /** 確認が必要なところの一覧。押すとその要素を選ぶ（その場メニューが出る） */

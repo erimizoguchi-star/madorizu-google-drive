@@ -798,6 +798,19 @@ function setSpacePolygon(
             }
           })
         : floor.windows,
+      // 手で直した壁は作り直されないので、この部屋だけの辺にあるものは一緒に動かす。
+      // 動かさないと元の位置に取り残され、新しい位置の自動の壁と合わせて「壁が増える」
+      walls: translating
+        ? floor.walls.map((wall) => {
+            if (!wall.manual) return wall
+            if (!wallBelongsOnlyToSpace(wall, spaceKey, oldPolygon, floor, edgeTol)) return wall
+            return {
+              ...wall,
+              start: { x: wall.start.x + dx, y: wall.start.y + dy },
+              end: { x: wall.end.x + dx, y: wall.end.y + dy },
+            }
+          })
+        : floor.walls,
       fixtures: translating
         ? floor.fixtures.map((fixture) => {
             const center = {
@@ -850,6 +863,24 @@ function floorSpaceEntries(floor: Floor): { key: string; polygon: Point[] }[] {
  * 開口が「移動中の空間（部屋 or 階段）の辺上にあり、かつ他空間の辺上にはない」ときだけ true。
  * 隣接して追加した部屋・階段を動かすとき、共有壁の扉・窓を持っていかない。
  */
+/**
+ * 壁がこの部屋（階段）だけの辺にあるか。壁の両端と中央がこの部屋の辺に乗り、中央がほかの部屋の辺に乗っていないこと。
+ * 端は角でほかの部屋に触れることが多いので、ほかの部屋との判定には使わない。
+ */
+function wallBelongsOnlyToSpace(
+  wall: Wall,
+  spaceKey: string,
+  spacePolygon: Point[],
+  floor: Floor,
+  tolerance: number
+): boolean {
+  const mid = { x: (wall.start.x + wall.end.x) / 2, y: (wall.start.y + wall.end.y) / 2 }
+  if (![wall.start, mid, wall.end].every((p) => isPointNearPolygonEdge(p, spacePolygon, tolerance))) return false
+  return !floorSpaceEntries(floor).some(
+    (other) => other.key !== spaceKey && isPointNearPolygonEdge(mid, other.polygon, tolerance)
+  )
+}
+
 function openingBelongsOnlyToSpace(
   points: Point[],
   spaceKey: string,

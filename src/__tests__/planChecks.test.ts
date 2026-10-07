@@ -68,3 +68,30 @@ describe('確認が必要なところを探す', () => {
     expect(mismatches[0].message).toContain('約 7.4帖')
   })
 })
+
+describe('壁の確認', () => {
+  it('同じ線上で重なっている壁と、部屋の境目にない壁を見つける', () => {
+    const floor = syncFloorWalls(makeFloor({ rooms: base }))
+    const issues = findPlanIssues({
+      title: 't',
+      floors: [
+        {
+          ...floor,
+          walls: [
+            ...floor.walls,
+            // 上の外壁に重なる手で直した壁
+            { id: 'dup', start: { x: 0, y: 0 }, end: { x: 300, y: 0 }, manual: true },
+            // 部屋の中に取り残された壁
+            { id: 'stray', start: { x: 50, y: 150 }, end: { x: 350, y: 150 }, manual: true },
+          ],
+        },
+      ],
+    })
+    const dup = issues.find((i) => i.kind === 'wall-duplicate')!
+    expect(dup.ref).toEqual({ kind: 'wall', floorId: '1f', wallId: 'dup' })
+    expect(dup.message).toContain('約 3000mm')
+    expect(issues.filter((i) => i.kind === 'wall-stray').map((i) => i.ref)).toEqual([
+      { kind: 'wall', floorId: '1f', wallId: 'stray' },
+    ])
+  })
+})
