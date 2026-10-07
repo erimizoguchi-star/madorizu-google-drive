@@ -20,6 +20,16 @@ const DIRECTIONAL_KINDS = new Set([
   'fix_casement',
 ])
 
+/**
+ * 左右対称でない窓（どちらの端に軸・戸袋があるかで形が変わる）。
+ * 向きは「端 × 内外」の4通りになる。左右対称の窓（引き違い・両開き・横すべり出しなど）は内外の2通り
+ */
+const ASYMMETRIC_KINDS = new Set(['casement', 'slide_out', 'single_sliding', 'pocket'])
+
+export function hasFourWayDirection(kind: Window['kind']): boolean {
+  return ASYMMETRIC_KINDS.has(kind ?? 'sliding')
+}
+
 export function hasWindowDirection(kind: Window['kind']): boolean {
   return DIRECTIONAL_KINDS.has(kind ?? 'sliding')
 }

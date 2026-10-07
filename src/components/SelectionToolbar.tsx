@@ -7,6 +7,7 @@ import { WINDOW_KIND_OPTIONS, normalizeWindowKind } from '../constants/windowOpt
 import type { DoorKind, FloorPlan, RoomType, StairLayout, WindowKind } from '../types/floorPlan'
 import {
   cycleDoorOrientation,
+  cycleWindowOrientation,
   findDoor,
   findRoom,
   findStair,
@@ -18,7 +19,7 @@ import {
   type SelectedElementRef,
 } from '../utils/floorPlanEdit'
 import { svgUnitsToMm } from '../utils/roomGeometry'
-import { hasWindowDirection } from '../utils/windowOrientation'
+import { hasFourWayDirection, hasWindowDirection } from '../utils/windowOrientation'
 import { NumberField } from './NumberField'
 
 type Updater = (prev: FloorPlan) => FloorPlan
@@ -278,10 +279,14 @@ function WindowToolbar({
         <button
           type="button"
           className="selection-toolbar__btn"
-          title="開く向きを反対にします（R キー）"
-          onClick={() => onChange((prev) => updateWindow(prev, selected, { outward: win.outward === -1 ? 1 : -1 }))}
+          title={
+            hasFourWayDirection(win.kind)
+              ? '押すたびに、向き（軸のある端と内外の4通り）が順に変わります（R キー）'
+              : '開く向きを反対にします（R キー）'
+          }
+          onClick={() => onChange((prev) => cycleWindowOrientation(prev, selected))}
         >
-          ⇄ 向き
+          {hasFourWayDirection(win.kind) ? '↻ 向き' : '⇄ 向き'}
         </button>
       )}
       <WidthField

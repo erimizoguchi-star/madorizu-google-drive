@@ -13,7 +13,7 @@ import { mmToSvgUnits, snapSvgToMmGrid, type RectEdge } from './roomGeometry'
 import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom'
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
-import { detectOutwardSide, hasWindowDirection } from './windowOrientation'
+import { detectOutwardSide, hasFourWayDirection, hasWindowDirection } from './windowOrientation'
 import { stairRect } from './stairShape'
 
 export type SelectOptions = {
@@ -608,6 +608,38 @@ export function cycleDoorOrientation(
   return found.door.swing === 1
     ? updateDoor(floorPlan, ref, { swing: -1 })
     : updateDoor(floorPlan, ref, { flipHinge: true })
+}
+
+/**
+ * 窓の向きを次へ切り替える。
+ * 左右対称でない窓（縦すべり出し・片開きなど）は、押すたびに「端 × 内外」の4通りを順に回る:
+ *   (端A, 外) → (端A, 内) → (端B, 内) → (端B, 外) → 最初へ
+ * 左右対称の窓は内外の2通り。
+ * 開く向き（outward）は start→end の進む向きに対する左右なので、端を入れ替える（start と end を入れ替える）と
+ * 同じ側でも値が反対になる。
+ */
+export function cycleWindowOrientation(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; windowId: string }
+): FloorPlan {
+  const found = findWindow(floorPlan, ref)
+  if (!found) return floorPlan
+  const win = found.window
+  if (!hasFourWayDirection(win.kind) || win.outward !== -1) {
+    return updateWindow(floorPlan, ref, { outward: win.outward === -1 ? 1 : -1 })
+  }
+  // 端を入れ替えて、開く側はそのまま（値は反対になる）
+  const floors = floorPlan.floors.map((floor, fi) =>
+    fi !== found.floorIndex
+      ? floor
+      : {
+          ...floor,
+          windows: floor.windows.map((w, wi) =>
+            wi === found.windowIndex ? { ...w, start: w.end, end: w.start, outward: 1 as const } : w
+          ),
+        }
+  )
+  return { ...floorPlan, floors }
 }
 
 export function updateWindow(

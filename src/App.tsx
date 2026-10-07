@@ -29,16 +29,15 @@ import type { AnalysisResult, FloorPlan, Point } from './types/floorPlan'
 import type { SelectedElementRef, SelectOptions } from './utils/floorPlanEdit'
 import {
   cycleDoorOrientation,
+  cycleWindowOrientation,
   deleteSelectedElement,
   describeSelection,
-  findWindow,
   isDeletableSelection,
   isTypingInEditableField,
   resizeRoomEdge,
   setRoomPolygon,
   setStairPolygon,
   updateLabelOffset,
-  updateWindow,
 } from './utils/floorPlanEdit'
 import {
   addDoorAt,
@@ -434,10 +433,7 @@ function App() {
           commit((prev) => cycleDoorOrientation(prev, selected))
         } else if (selected.kind === 'window') {
           e.preventDefault()
-          commit((prev) => {
-            const win = findWindow(prev, selected)?.window
-            return win ? updateWindow(prev, selected, { outward: win.outward === -1 ? 1 : -1 }) : prev
-          })
+          commit((prev) => cycleWindowOrientation(prev, selected))
         }
         return
       }

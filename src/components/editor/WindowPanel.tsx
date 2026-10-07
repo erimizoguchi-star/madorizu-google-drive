@@ -6,8 +6,9 @@ import {
   type SelectedElementRef,
   type SelectOptions,
   updateWindow,
+  cycleWindowOrientation,
 } from '../../utils/floorPlanEdit'
-import { hasWindowDirection } from '../../utils/windowOrientation'
+import { hasFourWayDirection, hasWindowDirection } from '../../utils/windowOrientation'
 import { svgUnitsToMm } from '../../utils/roomGeometry'
 import { NumberField } from '../NumberField'
 
@@ -87,18 +88,15 @@ export function WindowPanel({ floorPlan, selected, onSelect, onChange }: WindowP
                 <button
                   type="button"
                   className="btn editor-nudge-btn"
-                  onClick={() =>
-                    handleWindowField({
-                      outward: currentWindow.window.outward === -1 ? 1 : -1,
-                    })
-                  }
+                  onClick={() => applyPlan((prev) => cycleWindowOrientation(prev, selected))}
                 >
-                  ⇄ 反対側に開く
+                  {hasFourWayDirection(currentWindow.window.kind) ? '↻ 向きを変える' : '⇄ 反対側に開く'}
                 </button>
               </div>
               <p className="editor-field-hint">
-                生成時は建物の外側へ開くよう自動で向けています。
-                室内側を向いてしまったときはこのボタンで反転してください。
+                {hasFourWayDirection(currentWindow.window.kind)
+                  ? '押すたびに、軸のある端（左右）と開く側（内外）の4通りが順に変わります。'
+                  : '生成時は建物の外側へ開くよう自動で向けています。室内側を向いてしまったときはこのボタンで反転してください。'}
               </p>
             </div>
           )}
