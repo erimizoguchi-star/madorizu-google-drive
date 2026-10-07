@@ -16,6 +16,7 @@ const DIRECTIONAL_KINDS = new Set([
   'pocket',
   'folding',
   'awning',
+  'slide_out',
   'fix_casement',
 ])
 

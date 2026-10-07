@@ -11,12 +11,13 @@ export const FLOOR_CANVAS_PADDING = 36
 
 /** 壁の外へ張り出して描く窓の、張り出しの先端（両側。どちらが外かはここでは区別しない） */
 function windowProjectionPoints(win: Floor['windows'][number]): Point[] {
-  if (win.kind !== 'awning' && win.kind !== 'fix_casement') return []
+  if (win.kind !== 'awning' && win.kind !== 'fix_casement' && win.kind !== 'slide_out') return []
   const dx = win.end.x - win.start.x
   const dy = win.end.y - win.start.y
   const len = Math.hypot(dx, dy)
   if (len === 0) return []
-  const reach = 50
+  // 縦すべり出しは障子が窓の幅ほど外へ開く
+  const reach = win.kind === 'slide_out' ? Math.max(50, len * 0.8) : 50
   const nx = (-dy / len) * reach
   const ny = (dx / len) * reach
   return [win.start, win.end].flatMap((p) => [

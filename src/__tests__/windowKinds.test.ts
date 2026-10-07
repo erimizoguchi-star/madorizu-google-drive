@@ -19,3 +19,10 @@ describe('窓の種類', () => {
     expect(hasWindowDirection('fix')).toBe(false)
   })
 })
+
+describe('縦すべり出し窓', () => {
+  it('種類として扱え、開く向きを持つ', () => {
+    expect(normalizeWindowKind('slide_out')).toBe('slide_out')
+    expect(hasWindowDirection('slide_out')).toBe(true)
+  })
+})

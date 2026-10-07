@@ -251,6 +251,8 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
         const p2 = along(x2, y2, 0, 0, 0, nx, ny, face)
         const p3 = along(x2, y2, 0, 0, 0, nx, ny, face + depth)
         const p4 = along(x1, y1, 0, 0, 0, nx, ny, face + depth)
+        // 四角の中の破線の三角: 外側の2つの角から、壁側の辺の中央（障子の軸の側）へ
+        const apex = along(midX, midY, 0, 0, 0, nx, ny, face)
         return (
           <>
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={lineW} pointerEvents="none" />
@@ -262,6 +264,37 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
               stroke={color}
               strokeWidth={detailW}
               strokeDasharray="4 3"
+              pointerEvents="none"
+            />
+            <polyline
+              points={`${p4.x},${p4.y} ${apex.x},${apex.y} ${p3.x},${p3.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={detailW}
+              strokeDasharray="3 2.5"
+              pointerEvents="none"
+            />
+          </>
+        )
+      }
+      case 'slide_out': {
+        // 縦すべり出し窓: 軸が端から少し内側へすべって外へ開く。開いた障子の線と、開く軌跡の破線の弧
+        const pivot = along(x1, y1, ux, uy, len * 0.15)
+        const sash = len * 0.85
+        // 外へ 60° 開いた障子の先
+        const open = { x: pivot.x + (ux * 0.5 + nx * 0.866) * sash, y: pivot.y + (uy * 0.5 + ny * 0.866) * sash }
+        return (
+          <>
+            <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={detailW} pointerEvents="none" />
+            {endTicks(x1, y1, nx, ny, color, detailW, 1.15)}
+            {endTicks(x2, y2, nx, ny, color, detailW, 1.15)}
+            <line x1={pivot.x} y1={pivot.y} x2={open.x} y2={open.y} stroke={color} strokeWidth={lineW} pointerEvents="none" />
+            <path
+              d={`M ${x2} ${y2} A ${sash} ${sash} 0 0 ${sweep} ${open.x} ${open.y}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={detailW}
+              strokeDasharray="3 2.5"
               pointerEvents="none"
             />
           </>
