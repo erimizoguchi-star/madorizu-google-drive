@@ -162,7 +162,7 @@ function App() {
   const [aligning, setAligning] = useState(false)
   /** 通りのドラッグを始めたときの間取図。ドラッグ中はこれに当て直す（途中で別の通りと重なっても混ざらない） */
   const gridDragBaseRef = useRef<FloorPlan | null>(null)
-  /** 2点合わせで分かった、間取図を平面図に合わせるための横・縦の倍率（ずれが小さければ null） */
+  /** 3点合わせで分かった、間取図を平面図に合わせるための横・縦の倍率（ずれが小さければ null） */
   const [planStretch, setPlanStretch] = useState<{ sx: number; sy: number } | null>(null)
   /** ダブルクリックした部屋。その場メニューの部屋名の欄に1回だけカーソルを入れる */
   const [focusNameRoomId, setFocusNameRoomId] = useState<string | null>(null)
@@ -193,9 +193,18 @@ function App() {
         }))
       }
       setOverlayFloorId(appended.addedFloorIds[0] ?? null)
-      setOverlay((prev) => ({ ...prev, enabled: false, adjusting: false, calibrating: false }))
+      // 新しい階の図面は別の画像なので、前の図面の傾きは持ち越さない
+      setOverlay((prev) => ({ ...prev, enabled: false, adjusting: false, calibrating: false, rotation: 0 }))
     } else {
       resetFloorPlan(result.floorPlan)
+      // 前の図面に合わせた大きさ・位置・傾きは使えないので、重ねているなら合わせ直す
+      setOverlay((prev) => ({
+        ...prev,
+        rotation: 0,
+        adjusting: false,
+        calibrating: false,
+        needsFit: prev.enabled,
+      }))
       const source = result.sourcePreviewUrl && result.sourceFileName
         ? { url: result.sourcePreviewUrl, fileName: result.sourceFileName }
         : null
@@ -816,7 +825,7 @@ function App() {
                   calibrationStep={calibrationStep}
                   onChange={(next) => {
                     setOverlay(next)
-                    // 重ね方をやり直したら、前の2点合わせで出した提案は使えない
+                    // 重ね方をやり直したら、前の3点合わせで出した提案は使えない
                     if (!next.enabled || next.needsFit || next.calibrating) setPlanStretch(null)
                   }}
                   stretch={
@@ -827,7 +836,7 @@ function App() {
                         commit((plan) => ({
                           ...plan,
                           floors: plan.floors.map((floor) => {
-                            // 2点合わせは重ねている階の建物で測っているので、その階だけを合わせる
+                            // 3点合わせは重ねている階の建物で測っているので、その階だけを合わせる
                             if (floor.id !== overlayFloor?.id) return floor
                             const points = floor.rooms.flatMap((r) => r.polygon)
                             if (points.length === 0) return floor
@@ -855,7 +864,7 @@ function App() {
                 overlayFloorId={overlayFloor?.id}
                 onOverlayOffsetChange={(offset) => setOverlay((prev) => ({ ...prev, offset }))}
                 onOverlayCalibrationStep={setCalibrationStep}
-                onOverlayCalibrated={({ scaleX, scaleY, offset, planStretch: stretch }) => {
+                onOverlayCalibrated={({ scaleX, scaleY, offset, rotation, planStretch: stretch }) => {
                   // 縦横の倍率の差が 2% 未満なら、クリックの誤差とみなして提案しない
                   setPlanStretch(
                     stretch && (Math.abs(stretch.sx - 1) >= 0.02 || Math.abs(stretch.sy - 1) >= 0.02)
@@ -869,6 +878,7 @@ function App() {
                     scaleX: scale,
                     scaleY: scale,
                     offset,
+                    rotation: rotation ?? prev.rotation,
                     calibrating: false,
                     needsFit: false,
                   }))

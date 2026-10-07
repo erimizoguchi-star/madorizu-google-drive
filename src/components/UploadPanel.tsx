@@ -4,7 +4,9 @@ import { analyzeFloorPlan } from '../services/analyzeFloorPlan'
 import { fetchAppConfig, normalizeApiKey, verifyApiKey } from '../services/geminiApi'
 import {
   isSupportedFloorPlanFile,
+  normalizeQuarterTurns,
   prepareFloorPlanInput,
+  rotatePreparedInput,
   type PreparedFloorPlanInput,
 } from '../services/pdfToImage'
 import type { AnalysisResult } from '../types/floorPlan'
@@ -48,6 +50,10 @@ export function UploadPanel({
   const [keyStatus, setKeyStatus] = useState<string | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [preparedInput, setPreparedInput] = useState<PreparedFloorPlanInput | null>(null)
+  /** 回す前の図面（回すときはいつもここから回す。回した画像をさらに回すと画質が落ちる） */
+  const [baseInput, setBaseInput] = useState<PreparedFloorPlanInput | null>(null)
+  /** 図面を右回りに 90° ずつ回した回数（0〜3） */
+  const [turns, setTurns] = useState(0)
   const [selectedPage, setSelectedPage] = useState(1)
   const [highQuality, setHighQuality] = useState(false)
   /** 最後に解析した図面。同じ図面を続けて階として追加しないように使う */
@@ -143,8 +149,40 @@ export function UploadPanel({
     localStorage.removeItem(STORAGE_KEY)
   }, [])
 
+  /** 回して作った画像の URL（元のファイルやPDFから作った URL と分けて、解放してよいものだけを覚える） */
+  const rotatedUrlsRef = useRef(new Set<string>())
+  /** 今選んでいる図面（非同期の処理の中でも最新を見るため） */
+  const preparedRef = useRef<PreparedFloorPlanInput | null>(null)
+  const analyzedRef = useRef<PreparedFloorPlanInput | null>(null)
+  useEffect(() => {
+    analyzedRef.current = analyzedInput
+  }, [analyzedInput])
+
+  /**
+   * 回した図面を選んでいる図面にする。
+   * 回して作った画像は、読み取りに使わないまま回し直したら解放する（読み取った図面の画像は、重ね合わせでまだ使う）
+   */
+  const applyInput = useCallback(
+    (input: PreparedFloorPlanInput, fileName: string) => {
+      const prev = preparedRef.current
+      if (
+        prev &&
+        prev.previewUrl !== input.previewUrl &&
+        prev.previewUrl !== analyzedRef.current?.previewUrl &&
+        rotatedUrlsRef.current.delete(prev.previewUrl)
+      ) {
+        revokePreview(prev.previewUrl)
+      }
+      preparedRef.current = input
+      setPreparedInput(input)
+      setPreview(input.previewUrl)
+      onSourceReady({ previewUrl: input.previewUrl, fileName })
+    },
+    [onSourceReady, revokePreview]
+  )
+
   const loadInput = useCallback(
-    async (file: File, page: number) => {
+    async (file: File, page: number, quarterTurns = 0) => {
       if (!isSupportedFloorPlanFile(file)) {
         onError('対応形式: PNG, JPG, WebP, PDF')
         return
@@ -157,18 +195,41 @@ export function UploadPanel({
         // 前の図面のプレビューは解放しない。階ごとに図面を読み込むので、前の階の図面を
         // 「重ねる階」で切り替えて重ねるときにまだ使う（解放すると画像が出ず、位置も合わせられない）
         previewUrlRef.current = prepared.sourceType === 'image' ? prepared.previewUrl : null
-        setPreview(prepared.previewUrl)
+        // PDF のページを替えたときは、同じ向きに回したままにする（横向きの図面はどのページも横向きのことが多い）
+        const rotated = await rotatePreparedInput(prepared, quarterTurns)
+        if (rotated !== prepared) rotatedUrlsRef.current.add(rotated.previewUrl)
         setSourceFile(file)
-        setPreparedInput(prepared)
+        setBaseInput(prepared)
+        setTurns(normalizeQuarterTurns(quarterTurns))
         setSelectedPage(prepared.selectedPage)
-        onSourceReady({ previewUrl: prepared.previewUrl, fileName: file.name })
+        applyInput(rotated, file.name)
       } catch (e) {
         onError(e instanceof Error ? e.message : 'ファイルの読み込みに失敗しました')
       } finally {
         setLoadingPreview(false)
       }
     },
-    [onError, onSourceReady]
+    [onError, applyInput]
+  )
+
+  /** 図面を 90° 回す（delta = 1 で右回り、-1 で左回り） */
+  const handleRotate = useCallback(
+    async (delta: number) => {
+      if (!baseInput || !sourceFile) return
+      const next = normalizeQuarterTurns(turns + delta)
+      setLoadingPreview(true)
+      try {
+        const rotated = await rotatePreparedInput(baseInput, next)
+        if (rotated !== baseInput) rotatedUrlsRef.current.add(rotated.previewUrl)
+        setTurns(next)
+        applyInput(rotated, sourceFile.name)
+      } catch (e) {
+        onError(e instanceof Error ? e.message : '図面を回せませんでした')
+      } finally {
+        setLoadingPreview(false)
+      }
+    },
+    [baseInput, sourceFile, turns, applyInput, onError]
   )
 
   const handleFile = useCallback(
@@ -198,9 +259,9 @@ export function UploadPanel({
   const handlePageChange = useCallback(
     (page: number) => {
       if (!sourceFile) return
-      void loadInput(sourceFile, page)
+      void loadInput(sourceFile, page, turns)
     },
-    [sourceFile, loadInput]
+    [sourceFile, loadInput, turns]
   )
 
   const handleGenerate = useCallback(
@@ -413,6 +474,33 @@ export function UploadPanel({
           </div>
         )}
       </div>
+
+      {preparedInput && (
+        <div className="upload-rotate">
+          <span className="upload-rotate__label">図面の向き</span>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy || disabled}
+            onClick={() => void handleRotate(-1)}
+            title="左に90°回す"
+          >
+            ⟲ 左へ90°
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={busy || disabled}
+            onClick={() => void handleRotate(1)}
+            title="右に90°回す"
+          >
+            ⟳ 右へ90°
+          </button>
+          <span className="upload-rotate__hint">
+            {turns === 0 ? '横向きの図面は、読み取る前に正しい向きにしてください' : `${turns * 90}° 回しています`}
+          </span>
+        </div>
+      )}
 
       {showAppend && (
         <>

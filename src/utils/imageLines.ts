@@ -1,3 +1,5 @@
+import { rotatedBoxSize } from './overlayRotation'
+
 /**
  * 元の平面図（画像）から、壁の線の位置を探す。
  * 間取図の通りをドラッグしたとき、近くにある平面図の壁の線へ吸い付かせるために使う。
@@ -36,22 +38,34 @@ export function buildDarkMap(rgba: ArrayLike<number>, width: number, height: num
   return { width, height, colPrefix, rowPrefix }
 }
 
-/** 画像から暗い画素の表を作る。大きい画像は長辺 maxSize に縮めて数える（scale = 縮めた倍率） */
-export function darkMapFromImage(img: HTMLImageElement, maxSize = 2000): { map: DarkMap; scale: number } | null {
+/**
+ * 画像から暗い画素の表を作る。大きい画像は長辺 maxSize に縮めて数える（scale = 縮めた倍率）。
+ * rotationDeg を渡すと、画面で回して表示しているのと同じ向きに回してから数える。
+ * 表の範囲は回した画像を囲む枠になり、画面上の画像の getBoundingClientRect と一致する。
+ */
+export function darkMapFromImage(
+  img: HTMLImageElement,
+  maxSize = 2000,
+  rotationDeg = 0
+): { map: DarkMap; scale: number } | null {
   const w = img.naturalWidth
   const h = img.naturalHeight
   if (!w || !h) return null
-  const scale = Math.min(1, maxSize / Math.max(w, h))
-  const cw = Math.max(1, Math.round(w * scale))
-  const ch = Math.max(1, Math.round(h * scale))
+  const box = rotatedBoxSize(w, h, rotationDeg)
+  const scale = Math.min(1, maxSize / Math.max(box.width, box.height))
+  const cw = Math.max(1, Math.round(box.width * scale))
+  const ch = Math.max(1, Math.round(box.height * scale))
   const canvas = document.createElement('canvas')
   canvas.width = cw
   canvas.height = ch
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) return null
-  ctx.drawImage(img, 0, 0, cw, ch)
+  // 回した画像のまわりの隙間は透明のまま（透明は白とみなす）
+  ctx.translate(cw / 2, ch / 2)
+  ctx.rotate((rotationDeg * Math.PI) / 180)
+  ctx.drawImage(img, (-w * scale) / 2, (-h * scale) / 2, w * scale, h * scale)
   const { data } = ctx.getImageData(0, 0, cw, ch)
-  return { map: buildDarkMap(data, cw, ch), scale: cw / w }
+  return { map: buildDarkMap(data, cw, ch), scale }
 }
 
 /** 縦の線（列 x）の、行 y0〜y1 にある暗い画素の数 */

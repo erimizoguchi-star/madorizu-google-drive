@@ -230,7 +230,7 @@ export function FloorCanvas({
           // 出力（PNG / PDF など）で、階が複数あるとき各階の下に階名を描くために使う
           data-floor-label={floor.label}
           data-building-corner={buildingCorner}
-          // 建物（部屋の範囲）の左上・右下。平面図の位置合わせ（2点合わせなど）に使う。
+          // 建物（部屋の範囲）の左上・右下。平面図の位置合わせ（3点合わせなど）に使う。
           // 見た目の範囲（getBBox）は床模様の切り抜き前の線まで含んで建物より広くなるので、座標から求める
           data-building-box={
             roomPoints.length > 0

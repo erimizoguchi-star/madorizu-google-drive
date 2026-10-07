@@ -21,6 +21,7 @@ import type { GridSnapKind } from './GridLinesLayer'
 import { collectGridLines, type GridAxis } from '../utils/gridLines'
 import { darkMapFromImage, findLineNear, type DarkMap } from '../utils/imageLines'
 import { mmToSvgUnits } from '../utils/roomGeometry'
+import { normalizeAngle, rotatedBoxSize, solveThreePointAlignment } from '../utils/overlayRotation'
 
 interface FloorPlanViewProps {
   floorPlan: FloorPlan
@@ -66,20 +67,22 @@ interface FloorPlanViewProps {
   /** アップロードした平面図を重ねて表示する設定 */
   overlay?: SourceOverlayState
   overlayUrl?: string
-  /** 平面図を重ねる階。位置合わせ・2点合わせ・吸い付きはこの階の間取図を基準にする（省略時は1つ目の階） */
+  /** 平面図を重ねる階。位置合わせ・3点合わせ・吸い付きはこの階の間取図を基準にする（省略時は1つ目の階） */
   overlayFloorId?: string
   onOverlayOffsetChange?: (offset: Point) => void
   /**
-   * 2点合わせの結果（倍率と位置）を反映する。
-   * planStretch は、1つ目の階の建物を平面図の建物にぴったり合わせるための横・縦の倍率（2点合わせのときだけ）
+   * 3点合わせの結果（倍率と位置、回転）を反映する。
+   * planStretch は、重ねている階の建物を平面図の建物にぴったり合わせるための横・縦の倍率（3点合わせのときだけ）
    */
   onOverlayCalibrated?: (result: {
     scaleX: number
     scaleY: number
     offset: Point
+    /** 回転（度）。省くと今の回転のまま */
+    rotation?: number
     planStretch?: { sx: number; sy: number }
   }) => void
-  /** 2点合わせで何点クリック済みかを親へ伝える */
+  /** 3点合わせで何点クリック済みかを親へ伝える */
   onOverlayCalibrationStep?: (step: number) => void
   /** 「線を合わせる」中。通りをドラッグで動かせ、ほかの編集は止まる */
   aligning?: boolean
@@ -157,7 +160,7 @@ function findOverlayFloorSvg(container: HTMLElement | null, floorId: string | un
 
 /** 間取図の建物（その階の部屋全体）の画面上の矩形 */
 function planRectOnScreen(svg: SVGSVGElement | null) {
-  // 見た目の範囲（getBBox）は床模様の切り抜き前の線まで含み、建物より広くなる（2点合わせがずれる）。
+  // 見た目の範囲（getBBox）は床模様の切り抜き前の線まで含み、建物より広くなる（3点合わせがずれる）。
   // FloorCanvas が部屋の座標から求めた範囲を使う
   const [minX, minY, maxX, maxY] = (svg?.dataset.buildingBox ?? '').split(',').map(Number)
   const ctm = svg?.getScreenCTM()
@@ -217,20 +220,21 @@ export function FloorPlanView({
   const alignOffsetsAtDragStart = useMemo(() => floorAlignOffsets(floorPlan), [dragging])
   const alignOffsets = dragging ? alignOffsetsAtDragStart : liveAlignOffsets
   const layoutDirection = floorPlan.layout?.direction ?? 'row'
-  const [calibFirst, setCalibFirst] = useState<{ client: Point; local: Point } | null>(null)
+  /** 3点合わせでクリック済みの点（画面座標と、印を出す枠の中の位置） */
+  const [calibPoints, setCalibPoints] = useState<Array<{ client: Point; local: Point }>>([])
 
-  // 2点合わせを終了・中断したら1点目の記録を破棄する。
+  // 3点合わせを終了・中断したらクリック済みの点を破棄する。
   // effect で setState すると余計な再描画が走るため、React 推奨の
   // 「前回値と比較してレンダー中に調整する」パターンで書く
   const [prevCalibrating, setPrevCalibrating] = useState(calibrating)
   if (calibrating !== prevCalibrating) {
     setPrevCalibrating(calibrating)
-    if (!calibrating) setCalibFirst(null)
+    if (!calibrating) setCalibPoints([])
   }
 
   useEffect(() => {
-    onOverlayCalibrationStep?.(calibFirst ? 1 : 0)
-  }, [calibFirst, onOverlayCalibrationStep])
+    onOverlayCalibrationStep?.(calibPoints.length)
+  }, [calibPoints.length, onOverlayCalibrationStep])
 
   /** .floors-container に実際に掛かっている表示倍率（ZoomableView の拡大分） */
   const currentZoom = () => {
@@ -243,9 +247,10 @@ export function FloorPlanView({
 
   /**
    * 重ねる操作を始めたとき（needsFit）は、平面図が間取図の建物をちょうど覆う縮尺と位置にしておく。
-   * 平面図のどこに建物が描かれているかまでは分からないので、おおまかな初期値。細かくは「2点で合わせる」で。
+   * 平面図のどこに建物が描かれているかまでは分からないので、おおまかな初期値。細かくは「3点で合わせる」で。
    */
   const needsFit = !!overlay?.enabled && !!overlay.needsFit && !!overlayUrl
+  const rotation = overlay?.rotation ?? 0
   useEffect(() => {
     if (!needsFit || !onOverlayCalibrated) return
     const container = floorsRef.current
@@ -256,8 +261,10 @@ export function FloorPlanView({
     const fit = () => {
       if (cancelled) return
       const plan = planRectOnScreen(findOverlayFloorSvg(container, overlayFloorId))
-      const imgW = img.naturalWidth
-      const imgH = img.naturalHeight
+      // 回しているときは、回した画像を囲む枠の大きさで合わせる（90° なら縦横が入れ替わる）
+      const box = rotatedBoxSize(img.naturalWidth, img.naturalHeight, rotation)
+      const imgW = box.width
+      const imgH = box.height
       if (!plan || !imgW || !imgH) return
       const zoom = currentZoom()
       const rect = container.getBoundingClientRect()
@@ -285,10 +292,10 @@ export function FloorPlanView({
       cancelled = true
       img.removeEventListener('load', fit)
     }
-  }, [needsFit, onOverlayCalibrated, overlayFloorId])
+  }, [needsFit, onOverlayCalibrated, overlayFloorId, rotation])
 
-  /** 元の平面図の暗い画素の表（画像ごとに1回だけ作る） */
-  const darkMapRef = useRef<{ url: string; map: DarkMap } | null>(null)
+  /** 元の平面図の暗い画素の表（画像と回転ごとに1回だけ作る） */
+  const darkMapRef = useRef<{ key: string; map: DarkMap } | null>(null)
   /** ドラッグ中の通りの情報（ドラッグ開始時に決める） */
   const gridDragRef = useRef<{ spans: Array<[number, number]>; others: number[] } | null>(null)
 
@@ -299,9 +306,11 @@ export function FloorPlanView({
   }
 
   const ensureDarkMap = (img: HTMLImageElement) => {
-    if (darkMapRef.current?.url !== overlayUrl) {
-      const built = darkMapFromImage(img)
-      darkMapRef.current = built && overlayUrl ? { url: overlayUrl, map: built.map } : null
+    // 画面で回して表示しているのと同じ向きで数える（画面上の画像の枠と表の範囲が一致する）
+    const key = `${overlayUrl}|${rotation}`
+    if (darkMapRef.current?.key !== key) {
+      const built = darkMapFromImage(img, undefined, rotation)
+      darkMapRef.current = built && overlayUrl ? { key, map: built.map } : null
     }
     return darkMapRef.current?.map ?? null
   }
@@ -398,8 +407,8 @@ export function FloorPlanView({
   })
 
   /**
-   * 重ねた平面図の上で建物の左上・右下をクリックしてもらい、
-   * その2点が間取図の建物の角に重なるよう、縦横の倍率と位置を求める。
+   * 重ねた平面図の上で建物の左上・右上・右下をクリックしてもらい、
+   * その3点が間取図の建物の角に重なるよう、傾き・倍率（縦横比は保つ）・位置を求める。
    */
   const handleCalibrationClick = (e: React.PointerEvent<HTMLImageElement>) => {
     if (!overlay || !onOverlayCalibrated) return
@@ -413,63 +422,37 @@ export function FloorPlanView({
     const client = { x: e.clientX, y: e.clientY }
     const local = { x: (client.x - rect.left) / zoom, y: (client.y - rect.top) / zoom }
 
-    if (!calibFirst) {
-      setCalibFirst({ client, local })
+    const points = [...calibPoints, { client, local }]
+    if (points.length < 3) {
+      setCalibPoints(points)
       return
     }
+    setCalibPoints([])
 
     const plan = planRectOnScreen(overlayFloorSvg())
-    if (!plan) {
-      setCalibFirst(null)
-      return
-    }
-
-    const c1 = calibFirst.client
-    const c2 = client
-    const dx = c2.x - c1.x
-    const dy = c2.y - c1.y
-    // 2点が近すぎると倍率が発散するので無視する
-    if (Math.abs(dx) < 8 || Math.abs(dy) < 8) {
-      setCalibFirst(null)
-      return
-    }
-
-    const kx = (plan.p2.x - plan.p1.x) / dx
-    const ky = (plan.p2.y - plan.p1.y) / dy
-    // 縦横比を維持するため、縦横から求めた倍率の平均を共通縮尺にする
-    const k = (Math.abs(kx) + Math.abs(ky)) / 2
-    if (!(k > 0) || !Number.isFinite(k)) {
-      setCalibFirst(null)
-      return
-    }
-
-    // 拡大は画像の中心を基準に掛かるので、中心からの距離を倍率で伸ばした先を求める
     const img = container.querySelector('.source-overlay-image') as HTMLImageElement | null
-    if (!img) {
-      setCalibFirst(null)
-      return
-    }
+    if (!plan || !img) return
+    // 回転と拡大は画像の中心まわりに掛かる（回した画像を囲む枠の中心も同じ点）
     const imgRect = img.getBoundingClientRect()
-    const origin = { x: imgRect.left + imgRect.width / 2, y: imgRect.top + imgRect.height / 2 }
-    const movedC1 = {
-      x: origin.x + (c1.x - origin.x) * k,
-      y: origin.y + (c1.y - origin.y) * k,
-    }
+    const center = { x: imgRect.left + imgRect.width / 2, y: imgRect.top + imgRect.height / 2 }
+    const solved = solveThreePointAlignment({
+      clicks: [points[0].client, points[1].client, points[2].client],
+      plan,
+      center,
+    })
+    if (!solved) return
 
-    const baseScale = (overlay.scaleX + overlay.scaleY) / 2
-    const nextScale = baseScale * k
+    const nextScale = ((overlay.scaleX + overlay.scaleY) / 2) * solved.scale
     onOverlayCalibrated({
       scaleX: nextScale,
       scaleY: nextScale,
       offset: {
-        x: overlay.offset.x + (plan.p1.x - movedC1.x) / zoom,
-        y: overlay.offset.y + (plan.p1.y - movedC1.y) / zoom,
+        x: overlay.offset.x + solved.move.x / zoom,
+        y: overlay.offset.y + solved.move.y / zoom,
       },
-      // 平面図は縦横比を保って k 倍にした。建物の横幅は平面図側が dx·k、間取図側が dx·kx なので、
-      // 間取図を横 k/kx 倍・縦 k/ky 倍すれば外形がぴったり重なる
-      planStretch: { sx: k / Math.abs(kx), sy: k / Math.abs(ky) },
+      rotation: normalizeAngle(rotation + solved.rotateDeg),
+      planStretch: solved.planStretch,
     })
-    setCalibFirst(null)
   }
 
   /**
@@ -553,7 +536,7 @@ export function FloorPlanView({
                 draggable={false}
                 style={{
                   opacity: overlay.opacity,
-                  transform: `translate(-50%, -50%) translate(${overlay.offset.x}px, ${overlay.offset.y}px) scale(${overlay.scaleX}, ${overlay.scaleY})`,
+                  transform: `translate(-50%, -50%) translate(${overlay.offset.x}px, ${overlay.offset.y}px) rotate(${rotation}deg) scale(${overlay.scaleX}, ${overlay.scaleY})`,
                   pointerEvents: overlay.adjusting || calibrating ? 'auto' : 'none',
                 }}
                 onPointerDown={
@@ -564,12 +547,13 @@ export function FloorPlanView({
                       : undefined
                 }
               />
-              {calibFirst && (
+              {calibPoints.map((p, i) => (
                 <span
+                  key={i}
                   className="overlay-calib-marker"
-                  style={{ left: `${calibFirst.local.x}px`, top: `${calibFirst.local.y}px` }}
+                  style={{ left: `${p.local.x}px`, top: `${p.local.y}px` }}
                 />
-              )}
+              ))}
             </>
           )}
           {floorPlan.floors.map((floor, floorIndex) => (
