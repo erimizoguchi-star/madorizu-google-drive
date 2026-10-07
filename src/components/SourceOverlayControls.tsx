@@ -33,6 +33,10 @@ export const DEFAULT_SOURCE_OVERLAY: SourceOverlayState = {
 
 interface SourceOverlayControlsProps {
   fileName: string
+  /** 間取図の階。2つ以上あれば、平面図を重ねる階を選べるようにする */
+  floors?: { id: string; label: string }[]
+  targetFloorId?: string | null
+  onTargetFloorChange?: (floorId: string) => void
   state: SourceOverlayState
   /** 2点合わせで今どこまでクリックしたか（0 or 1） */
   calibrationStep: number
@@ -51,6 +55,9 @@ const percent = (s: number) => {
 
 export function SourceOverlayControls({
   fileName,
+  floors = [],
+  targetFloorId,
+  onTargetFloorChange,
   state,
   calibrationStep,
   onChange,
@@ -72,6 +79,24 @@ export function SourceOverlayControls({
         />
         元の平面図を重ねる
       </label>
+
+      {floors.length > 1 && onTargetFloorChange && (
+        <div className="overlay-field">
+          <label htmlFor="overlay-floor">重ねる階</label>
+          <select
+            id="overlay-floor"
+            value={targetFloorId ?? ''}
+            onChange={(e) => onTargetFloorChange(e.target.value)}
+            title="その階の元の図面を、その階の間取図に重ねます"
+          >
+            {floors.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {state.enabled && (
         <>

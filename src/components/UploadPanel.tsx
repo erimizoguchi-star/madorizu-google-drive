@@ -154,7 +154,8 @@ export function UploadPanel({
 
       try {
         const prepared = await prepareFloorPlanInput(file, page)
-        revokePreview(previewUrlRef.current)
+        // 前の図面のプレビューは解放しない。階ごとに図面を読み込むので、前の階の図面を
+        // 「重ねる階」で切り替えて重ねるときにまだ使う（解放すると画像が出ず、位置も合わせられない）
         previewUrlRef.current = prepared.sourceType === 'image' ? prepared.previewUrl : null
         setPreview(prepared.previewUrl)
         setSourceFile(file)
@@ -167,7 +168,7 @@ export function UploadPanel({
         setLoadingPreview(false)
       }
     },
-    [onError, onSourceReady, revokePreview]
+    [onError, onSourceReady]
   )
 
   const handleFile = useCallback(

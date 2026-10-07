@@ -102,6 +102,13 @@ function App() {
     redo,
   } = useFloorPlanHistory()
   const [sourcePreview, setSourcePreview] = useState<{ url: string; fileName: string } | null>(null)
+  /**
+   * 階ごとの元の平面図。階ごとに別の図面を読み込むので、重ねるときはその階の図面を、その階の間取図に合わせる。
+   * （以前は最後に読み込んだ図面を、いつも1つ目の階に合わせていた）
+   */
+  const [floorSources, setFloorSources] = useState<Record<string, { url: string; fileName: string }>>({})
+  /** 平面図を重ねる階 */
+  const [overlayFloorId, setOverlayFloorId] = useState<string | null>(null)
   const [analysisInfo, setAnalysisInfo] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   /** サイドバーの作業段階。編集タブを開いている間が「編集モード」 */
@@ -140,10 +147,25 @@ function App() {
       }
       // 階の追加も「元に戻す」で取り消せるよう、履歴に積む
       commit(appended.floorPlan)
-      // 重ね合わせは間取図全体に合わせる作りなので、階が増えたら一度外す
+      // 追加した階には今回の図面を覚え、重ねる対象もその階にする。重ね方は新しい階で合わせ直すので一度外す
+      const source = result.sourcePreviewUrl && result.sourceFileName
+        ? { url: result.sourcePreviewUrl, fileName: result.sourceFileName }
+        : null
+      if (source) {
+        setFloorSources((prev) => ({
+          ...prev,
+          ...Object.fromEntries(appended.addedFloorIds.map((id) => [id, source])),
+        }))
+      }
+      setOverlayFloorId(appended.addedFloorIds[0] ?? null)
       setOverlay((prev) => ({ ...prev, enabled: false, adjusting: false, calibrating: false }))
     } else {
       resetFloorPlan(result.floorPlan)
+      const source = result.sourcePreviewUrl && result.sourceFileName
+        ? { url: result.sourcePreviewUrl, fileName: result.sourceFileName }
+        : null
+      setFloorSources(source ? Object.fromEntries(result.floorPlan.floors.map((f) => [f.id, source])) : {})
+      setOverlayFloorId(result.floorPlan.floors[0]?.id ?? null)
     }
     setAnalysisInfo(result)
     setError(null)
@@ -161,6 +183,10 @@ function App() {
   }
 
   const editMode = !!floorPlan && sidebarTab === 'edit'
+  // 重ねる階（消された階を指していれば1つ目の階）と、その階の図面（覚えていなければ最後に読み込んだ図面）
+  const overlayFloor =
+    floorPlan?.floors.find((f) => f.id === overlayFloorId) ?? floorPlan?.floors[0] ?? null
+  const overlaySource = (overlayFloor && floorSources[overlayFloor.id]) ?? sourcePreview
   const clearFocusNameRoom = useCallback(() => setFocusNameRoomId(null), [])
 
   /** タブを切り替える。編集タブを離れるときは、選択や配置をやめる */
@@ -184,7 +210,7 @@ function App() {
     setPlaceKind(null)
     setWallDraftStart(null)
     setPlaceWallTarget(null)
-    if (sourcePreview && !overlay.enabled) {
+    if (overlaySource && !overlay.enabled) {
       setOverlay((prev) => ({ ...prev, enabled: true, adjusting: false, calibrating: false, needsFit: true }))
     }
   }
@@ -680,9 +706,22 @@ function App() {
           {floorPlan && (
             <div className="generated-preview-card">
               <h3>{isDemo ? 'サンプル間取図' : '生成された間取図'}</h3>
-              {sourcePreview && (
+              {overlaySource && (
                 <SourceOverlayControls
-                  fileName={sourcePreview.fileName}
+                  fileName={overlaySource.fileName}
+                  floors={floorPlan.floors.map((f) => ({ id: f.id, label: f.label }))}
+                  targetFloorId={overlayFloor?.id ?? null}
+                  onTargetFloorChange={(floorId) => {
+                    setOverlayFloorId(floorId)
+                    setPlanStretch(null)
+                    // 別の階の図面に替わるので、その階の大きさに合わせ直す
+                    setOverlay((prev) => ({
+                      ...prev,
+                      adjusting: false,
+                      calibrating: false,
+                      needsFit: prev.enabled,
+                    }))
+                  }}
                   state={overlay}
                   calibrationStep={calibrationStep}
                   onChange={(next) => {
@@ -697,9 +736,9 @@ function App() {
                         const { sx, sy } = planStretch
                         commit((plan) => ({
                           ...plan,
-                          floors: plan.floors.map((floor, i) => {
-                            // 2点合わせは1つ目の階の建物で測っているので、その階だけを合わせる
-                            if (i !== 0) return floor
+                          floors: plan.floors.map((floor) => {
+                            // 2点合わせは重ねている階の建物で測っているので、その階だけを合わせる
+                            if (floor.id !== overlayFloor?.id) return floor
                             const points = floor.rooms.flatMap((r) => r.polygon)
                             if (points.length === 0) return floor
                             const origin = {
@@ -722,7 +761,8 @@ function App() {
                 fitKey={`${planGeneration}-${floorPlan.floors.length}`}
                 editable={editMode}
                 overlay={overlay}
-                overlayUrl={sourcePreview?.url}
+                overlayUrl={overlaySource?.url}
+                overlayFloorId={overlayFloor?.id}
                 onOverlayOffsetChange={(offset) => setOverlay((prev) => ({ ...prev, offset }))}
                 onOverlayCalibrationStep={setCalibrationStep}
                 onOverlayCalibrated={({ scaleX, scaleY, offset, planStretch: stretch }) => {

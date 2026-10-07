@@ -62,6 +62,8 @@ interface FloorPlanViewProps {
   /** アップロードした平面図を重ねて表示する設定 */
   overlay?: SourceOverlayState
   overlayUrl?: string
+  /** 平面図を重ねる階。位置合わせ・2点合わせ・吸い付きはこの階の間取図を基準にする（省略時は1つ目の階） */
+  overlayFloorId?: string
   onOverlayOffsetChange?: (offset: Point) => void
   /**
    * 2点合わせの結果（倍率と位置）を反映する。
@@ -118,6 +120,31 @@ function placeHint(kind: PlaceKind): string {
   return BASE_PLACE_HINTS[kind]
 }
 
+/** 平面図を重ねる階の間取図（SVG）。見つからなければ1つ目の階 */
+function findOverlayFloorSvg(container: HTMLElement | null, floorId: string | undefined): SVGSVGElement | null {
+  if (!container) return null
+  const target = floorId
+    ? container.querySelector<SVGSVGElement>(`svg.floor-canvas[data-floor-id="${CSS.escape(floorId)}"]`)
+    : null
+  return target ?? container.querySelector<SVGSVGElement>('svg.floor-canvas')
+}
+
+/** 間取図の建物（その階の部屋全体）の画面上の矩形 */
+function planRectOnScreen(svg: SVGSVGElement | null) {
+  const layer = svg?.querySelector('.rooms-layer') as SVGGElement | null
+  if (!layer) return null
+  const box = layer.getBBox()
+  const ctm = layer.getScreenCTM()
+  if (!ctm || box.width < 1 || box.height < 1) return null
+  const toScreen = (x: number, y: number) => ({
+    x: ctm.a * x + ctm.c * y + ctm.e,
+    y: ctm.b * x + ctm.d * y + ctm.f,
+  })
+  const p1 = toScreen(box.x, box.y)
+  const p2 = toScreen(box.x + box.width, box.y + box.height)
+  return { p1, p2 }
+}
+
 export function FloorPlanView({
   floorPlan,
   id = 'madorizu-export',
@@ -129,6 +156,7 @@ export function FloorPlanView({
   wallDraftStart,
   overlay,
   overlayUrl,
+  overlayFloorId,
   onOverlayOffsetChange,
   onOverlayCalibrated,
   onOverlayCalibrationStep,
@@ -179,21 +207,7 @@ export function FloorPlanView({
     return container.getBoundingClientRect().width / container.offsetWidth || 1
   }
 
-  /** 間取図の建物（1つ目の階の部屋全体）の画面上の矩形 */
-  const planRectOnScreen = () => {
-    const layer = floorsRef.current?.querySelector('svg .rooms-layer') as SVGGElement | null
-    if (!layer) return null
-    const box = layer.getBBox()
-    const ctm = layer.getScreenCTM()
-    if (!ctm || box.width < 1 || box.height < 1) return null
-    const toScreen = (x: number, y: number) => ({
-      x: ctm.a * x + ctm.c * y + ctm.e,
-      y: ctm.b * x + ctm.d * y + ctm.f,
-    })
-    const p1 = toScreen(box.x, box.y)
-    const p2 = toScreen(box.x + box.width, box.y + box.height)
-    return { p1, p2 }
-  }
+  const overlayFloorSvg = () => findOverlayFloorSvg(floorsRef.current, overlayFloorId)
 
   /**
    * 重ねる操作を始めたとき（needsFit）は、平面図が間取図の建物をちょうど覆う縮尺と位置にしておく。
@@ -209,7 +223,7 @@ export function FloorPlanView({
     let cancelled = false
     const fit = () => {
       if (cancelled) return
-      const plan = planRectOnScreen()
+      const plan = planRectOnScreen(findOverlayFloorSvg(container, overlayFloorId))
       const imgW = img.naturalWidth
       const imgH = img.naturalHeight
       if (!plan || !imgW || !imgH) return
@@ -239,7 +253,7 @@ export function FloorPlanView({
       cancelled = true
       img.removeEventListener('load', fit)
     }
-  }, [needsFit, onOverlayCalibrated])
+  }, [needsFit, onOverlayCalibrated, overlayFloorId])
 
   /** 元の平面図の暗い画素の表（画像ごとに1回だけ作る） */
   const darkMapRef = useRef<{ url: string; map: DarkMap } | null>(null)
@@ -281,7 +295,8 @@ export function FloorPlanView({
     const alongToScreen = (v: number) =>
       axis === 'x' ? ctm.d * (v + originY) + ctm.f : ctm.a * (v + originX) + ctm.e
 
-    const img = overlayImage()
+    // 平面図はその階の図面なので、重ねている階の通りだけを平面図の線に吸い付かせる
+    const img = svg === overlayFloorSvg() ? overlayImage() : null
     const map = img ? ensureDarkMap(img) : null
     if (img && map) {
       const r = img.getBoundingClientRect()
@@ -316,10 +331,10 @@ export function FloorPlanView({
    * 重ねた平面図を、間取図の建物に対して動かないようにする。
    * 平面図の画像は枠（.floors-container）の中心を基準に置いている。ところが壁を建物の外へ動かすなどで
    * 図面の描画範囲が変わると、枠の大きさと枠の中での建物の位置が変わり、平面図だけが取り残されてずれる。
-   * 1つ目の階の原点（座標 0,0）が枠の中心からどれだけ離れているかを覚えておき、変わったぶんだけ平面図も動かす。
+   * 重ねる階の原点（座標 0,0）が枠の中心からどれだけ離れているかを覚えておき、変わったぶんだけ平面図も動かす。
    * 描画のたびに測り、画面に出る前（useLayoutEffect）に直すので、ずれた瞬間は見えない。
    */
-  const overlayAnchorRef = useRef<Point | null>(null)
+  const overlayAnchorRef = useRef<{ floorId: string; point: Point } | null>(null)
   const overlayShown = !!overlay?.enabled && !!overlayUrl
   useLayoutEffect(() => {
     if (!overlayShown || needsFit || !overlay) {
@@ -327,9 +342,10 @@ export function FloorPlanView({
       return
     }
     const container = floorsRef.current
-    const svg = container?.querySelector<SVGSVGElement>('svg.floor-canvas')
+    const svg = overlayFloorSvg()
     const [originX, originY] = (svg?.dataset.origin ?? '').split(',').map(Number)
     if (!container || !svg || !Number.isFinite(originX) || !Number.isFinite(originY)) return
+    const floorId = svg.dataset.floorId ?? ''
 
     const zoom = currentZoom()
     const rect = container.getBoundingClientRect()
@@ -340,10 +356,11 @@ export function FloorPlanView({
       y: (svgRect.top - rect.top) / zoom + originY - container.offsetHeight / 2,
     }
     const prev = overlayAnchorRef.current
-    overlayAnchorRef.current = anchor
-    if (!prev) return
-    const dx = anchor.x - prev.x
-    const dy = anchor.y - prev.y
+    overlayAnchorRef.current = { floorId, point: anchor }
+    // 重ねる階が替わったときは、基準を測り直すだけ（前の階との差で平面図を動かさない）
+    if (!prev || prev.floorId !== floorId) return
+    const dx = anchor.x - prev.point.x
+    const dy = anchor.y - prev.point.y
     if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return
     onOverlayOffsetChange?.({ x: overlay.offset.x + dx, y: overlay.offset.y + dy })
   })
@@ -369,7 +386,7 @@ export function FloorPlanView({
       return
     }
 
-    const plan = planRectOnScreen()
+    const plan = planRectOnScreen(overlayFloorSvg())
     if (!plan) {
       setCalibFirst(null)
       return
