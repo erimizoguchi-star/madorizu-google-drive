@@ -251,8 +251,8 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
         const p2 = along(x2, y2, 0, 0, 0, nx, ny, face)
         const p3 = along(x2, y2, 0, 0, 0, nx, ny, face + depth)
         const p4 = along(x1, y1, 0, 0, 0, nx, ny, face + depth)
-        // 四角の中の破線の三角: 外側の2つの角から、壁側の辺の中央（障子の軸の側）へ
-        const apex = along(midX, midY, 0, 0, 0, nx, ny, face)
+        // 四角の中の破線の三角: 内側（壁側）の2つの角から、外側の辺の中央へ
+        const apex = along(midX, midY, 0, 0, 0, nx, ny, face + depth)
         return (
           <>
             <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={color} strokeWidth={lineW} pointerEvents="none" />
@@ -267,7 +267,7 @@ export function WindowRenderer({ window: win, selected, selectable, onSelect }: 
               pointerEvents="none"
             />
             <polyline
-              points={`${p4.x},${p4.y} ${apex.x},${apex.y} ${p3.x},${p3.y}`}
+              points={`${p1.x},${p1.y} ${apex.x},${apex.y} ${p2.x},${p2.y}`}
               fill="none"
               stroke={color}
               strokeWidth={detailW}
