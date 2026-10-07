@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { stairRect } from '../utils/stairShape'
 import type { Point, Stair } from '../types/floorPlan'
 import { STAIR, pointsToPath } from './styles'
 import { attachSvgPointerDrag, canvasToFloor, clientToSvg } from './svgCoords'
@@ -38,7 +39,8 @@ export function StairRenderer({
   onMove,
   onLabelOffsetChange,
 }: StairRendererProps) {
-  const path = pointsToPath(stair.polygon)
+  // 輪郭がゆがんでいても長方形として描く（段・矢印は長方形の範囲に描くので、ゆがむと三角形に切り抜かれていた）
+  const path = pointsToPath(stairRect(stair.polygon))
   const clipId = `stair-clip-${clipScope}-${stair.id}`
   const { stepLines, arrowPath, breakLine } = computeStairGraphics(stair)
   const label = computeStairLabelLayout(stair)

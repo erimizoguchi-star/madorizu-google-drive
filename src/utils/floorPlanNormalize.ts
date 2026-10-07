@@ -22,6 +22,7 @@ import { syncFloorWalls } from './ensureExteriorWalls'
 import { orientWindowsOutward } from './windowOrientation'
 import { mmToSvgUnits } from './roomGeometry'
 import { STAIR_DEFAULT_WIDTH_MM, withStairWidth } from './resizeStair'
+import { stairRect } from './stairShape'
 
 const VALID_ROOM_TYPES = new Set<RoomType>([
   'ld',
@@ -542,7 +543,8 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
       ? Math.round(stair.widthMm)
       : STAIR_DEFAULT_WIDTH_MM
   const preparedPolygon = useMm ? prepareMmPolygon(polygon) : polygon
-  const scaledPolygon = useMm ? scalePolygon(preparedPolygon) : preparedPolygon
+  // 階段の輪郭は長方形にそろえる（段・矢印は長方形の範囲に描く）
+  const scaledPolygon = stairRect(useMm ? scalePolygon(preparedPolygon) : preparedPolygon)
   const base: Stair = {
     ...stair,
     id: stair.id || `stair-${index}`,

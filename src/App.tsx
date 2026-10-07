@@ -63,6 +63,7 @@ import {
 } from './utils/floorPlanDrag'
 import { appendFloors } from './utils/floorPlanFloors'
 import { moveGridLine, scaleFloor } from './utils/gridLines'
+import { rectifyPlanStairs } from './utils/stairShape'
 import {
   fetchPropertySourceFile,
   fetchPropertySources,
@@ -229,7 +230,7 @@ function App() {
       if (source.latest) latest = entry
     }
     setPendingRestore(null)
-    resetFloorPlan(record.floorPlan)
+    resetFloorPlan(rectifyPlanStairs(record.floorPlan))
     setFloorSources(sources)
     setSourcePreview(latest ?? Object.values(sources)[0] ?? null)
     setOverlayFloorId(record.overlayFloorId)
@@ -663,7 +664,7 @@ function App() {
                 onCurrentIdChange={setSavedPlanId}
                 onLoad={(plan) => {
                   setPendingRestore(null)
-                  resetFloorPlan(plan)
+                  resetFloorPlan(rectifyPlanStairs(plan))
                   setSidebarTab('edit')
                   setSelected(null)
                   setMergeRoomIds(null)

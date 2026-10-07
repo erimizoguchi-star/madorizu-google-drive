@@ -14,6 +14,7 @@ import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
 import { detectOutwardSide, hasWindowDirection } from './windowOrientation'
+import { stairRect } from './stairShape'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
@@ -344,6 +345,8 @@ export function updateStair(
         }
         // 平行移動は moveStair / setStairPolygon 側で開口追従と壁同期する
         updated = applyLabelOffsetPatch(updated, patch)
+        // 輪郭は長方形にそろえる（ゆがんでいると三角形に切り抜かれて表示される）
+        updated = { ...updated, polygon: stairRect(updated.polygon) }
         return updated
       }),
     }

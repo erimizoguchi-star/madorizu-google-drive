@@ -1,6 +1,7 @@
 import type { Door, Floor, Point, Window } from '../types/floorPlan'
 import { syncFloorWalls } from './ensureExteriorWalls'
 import { mmToSvgUnits, MIN_ROOM_SIZE_MM } from './roomGeometry'
+import { rectifyFloorStairs } from './stairShape'
 
 /**
  * 壁の通り（同じ線上に並ぶ部屋・階段の辺）をまとめて動かす。
@@ -118,7 +119,7 @@ export function moveGridLine(floor: Floor, axis: GridAxis, from: number, to: num
 
   const move = (p: Point) => moveCoord(axis, from, target, p)
 
-  return syncFloorWalls({
+  return rectifyFloorStairs(syncFloorWalls({
     ...floor,
     rooms: floor.rooms.map((room) => ({ ...room, polygon: room.polygon.map(move) })),
     stairs: floor.stairs.map((stair) => ({ ...stair, polygon: stair.polygon.map(move) })),
@@ -136,7 +137,7 @@ export function moveGridLine(floor: Floor, axis: GridAxis, from: number, to: num
     hiddenWalls: floor.hiddenWalls?.map((hidden) =>
       hidden.start && hidden.end ? { ...hidden, start: move(hidden.start), end: move(hidden.end) } : hidden
     ),
-  })
+  }))
 }
 
 /**
@@ -146,7 +147,7 @@ export function moveGridLine(floor: Floor, axis: GridAxis, from: number, to: num
 export function scaleFloor(floor: Floor, origin: Point, sx: number, sy: number): Floor {
   const r = (v: number) => Math.round(v * 2) / 2
   const sp = (p: Point): Point => ({ x: r(origin.x + (p.x - origin.x) * sx), y: r(origin.y + (p.y - origin.y) * sy) })
-  return syncFloorWalls({
+  return rectifyFloorStairs(syncFloorWalls({
     ...floor,
     rooms: floor.rooms.map((room) => ({ ...room, polygon: room.polygon.map(sp) })),
     stairs: floor.stairs.map((stair) => ({ ...stair, polygon: stair.polygon.map(sp) })),
@@ -165,5 +166,5 @@ export function scaleFloor(floor: Floor, origin: Point, sx: number, sy: number):
       return { ...fixture, position: { x: r(center.x - fixture.width / 2), y: r(center.y - fixture.height / 2) } }
     }),
     texts: floor.texts?.map((t) => ({ ...t, position: sp(t.position) })),
-  })
+  }))
 }
