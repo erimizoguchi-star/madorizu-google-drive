@@ -69,13 +69,30 @@ interface FloorCanvasProps {
   onRoomDoubleClick?: (roomId: string) => void
 }
 
+/** 壁の外へ張り出して描く窓の、張り出しの先端（両側。どちらが外かはここでは区別しない） */
+function windowProjectionPoints(win: Floor['windows'][number]): Point[] {
+  if (win.kind !== 'awning' && win.kind !== 'fix_casement') return []
+  const dx = win.end.x - win.start.x
+  const dy = win.end.y - win.start.y
+  const len = Math.hypot(dx, dy)
+  if (len === 0) return []
+  const reach = 50
+  const nx = (-dy / len) * reach
+  const ny = (dx / len) * reach
+  return [win.start, win.end].flatMap((p) => [
+    { x: p.x + nx, y: p.y + ny },
+    { x: p.x - nx, y: p.y - ny },
+  ])
+}
+
 function getBounds(floor: Floor) {
   const allPoints = [
     ...floor.rooms.flatMap((r) => r.polygon ?? []),
     ...floor.walls.flatMap((w) => [w.start, w.end]),
     // 開き弧・戸先など壁外にはみ出す記号も含める（位置点だけだと viewBox で切れる）
     ...floor.doors.flatMap((d) => doorPaintExtentPoints(d)),
-    ...floor.windows.flatMap((w) => [w.start, w.end]),
+    // 横すべり出し・FIX＋両端すべり出しは壁の外へ張り出して描くので、その分も含める（含めないと図面の端で切れる）
+    ...floor.windows.flatMap((w) => [w.start, w.end, ...windowProjectionPoints(w)]),
     ...floor.fixtures.flatMap((f) => [
       f.position,
       { x: f.position.x + f.width, y: f.position.y + f.height },

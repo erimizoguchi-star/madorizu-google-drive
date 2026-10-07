@@ -120,7 +120,7 @@ type: bathtub, toilet, sink, stove, kitchen_sink, refrigerator, washer, car
 
 ## 扉・窓の種類
 扉 kind（省略時 swing）: swing（片開き）, double_swing（両開き）, parent_child（親子戸）, sliding（片引き）, double_sliding（引き違い）, pocket（引き込み）, folding（折れ戸）, double_folding（両折れ）, opening（開口）
-窓 kind（省略時 sliding）: sliding（引き違い戸）, single_sliding（片引き戸）, pocket（引き込み戸）, folding（折れ戸）, casement（片開き戸）, double_casement（両開き戸）
+窓 kind（省略時 sliding）: sliding（引き違い戸）, single_sliding（片引き戸）, pocket（引き込み戸）, folding（折れ戸）, casement（片開き戸）, double_casement（両開き戸）, awning（横すべり出し窓：壁の外側に障子を破線の四角で描く。トイレ・浴室・洗面に多い）, fix（FIX窓・はめ殺し：開閉の記号がなくガラスの線だけ）, fix_casement（中央FIX＋両端の縦すべり出し：両端に外へ開く弧がある横長の連窓）
 
 ## 品質要件
 - 図面に複数階があれば floors に各階を追加

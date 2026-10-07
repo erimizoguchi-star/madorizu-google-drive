@@ -9,7 +9,15 @@ import type { Floor, Point, Window } from '../types/floorPlan'
  */
 
 /** 向きを持つ窓の種類 */
-const DIRECTIONAL_KINDS = new Set(['casement', 'double_casement', 'single_sliding', 'pocket', 'folding'])
+const DIRECTIONAL_KINDS = new Set([
+  'casement',
+  'double_casement',
+  'single_sliding',
+  'pocket',
+  'folding',
+  'awning',
+  'fix_casement',
+])
 
 export function hasWindowDirection(kind: Window['kind']): boolean {
   return DIRECTIONAL_KINDS.has(kind ?? 'sliding')

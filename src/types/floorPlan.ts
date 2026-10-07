@@ -105,6 +105,12 @@ export type WindowKind =
   | 'folding'
   | 'casement'
   | 'double_casement'
+  /** 横すべり出し窓（上を軸に外へ開く。平面図では外側に破線の四角） */
+  | 'awning'
+  /** FIX窓（はめ殺し） */
+  | 'fix'
+  /** 中央が FIX、両端が外へ開く縦すべり出しの連窓 */
+  | 'fix_casement'
 
 export interface Window {
   id: string

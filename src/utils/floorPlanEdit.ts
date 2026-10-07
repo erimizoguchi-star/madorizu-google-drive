@@ -14,6 +14,7 @@ import { mmToSvgUnits, snapSvgToMmGrid, type RectEdge } from './roomGeometry'
 import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom'
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
+import { detectOutwardSide, hasWindowDirection } from './windowOrientation'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
@@ -620,6 +621,11 @@ export function updateWindow(
         let updated = { ...win }
         if (patch.kind === 'sliding') delete updated.kind
         else if (patch.kind !== undefined) updated.kind = patch.kind
+        // 開く向きのある種類に変えたときは、建物の外へ開くよう向け直す（前の種類の向きのままだと内側に開く）
+        if (patch.kind !== undefined && patch.outward === undefined && hasWindowDirection(patch.kind)) {
+          const outside = detectOutwardSide(floor, updated)
+          if (outside != null) updated.outward = outside
+        }
         if (patch.outward !== undefined) updated.outward = patch.outward
         if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
           const widthSvg = mmToSvgUnits(Math.min(6000, Math.max(300, patch.widthMm)))
