@@ -23,7 +23,12 @@ interface UploadPanelProps {
   /**
    * 物件情報管理システムにある、この物件の図面。指定があると一覧を出し、選ぶとアップロードと同じように読み込む。
    */
-  propertySources?: { sources: PropertySource[]; load: (source: PropertySource) => Promise<File> }
+  propertySources?: {
+    sources: PropertySource[]
+    load: (source: PropertySource) => Promise<File>
+    /** 前に送った間取図の編集データを開く（続きから編集） */
+    loadEditData?: (source: PropertySource) => Promise<void>
+  }
   /** 間取図がすでにあるとき true。「階として追加」を出す */
   canAppend?: boolean
 }
@@ -239,6 +244,23 @@ export function UploadPanel({
     [loadInput]
   )
 
+  /** 物件へ前に送った間取図を、編集データから開き直す */
+  const handleEditData = useCallback(
+    async (source: PropertySource) => {
+      if (!propertySources?.loadEditData) return
+      setLoadingSourceId(`${source.id}:data`)
+      onError('')
+      try {
+        await propertySources.loadEditData(source)
+      } catch (e) {
+        onError(e instanceof Error ? e.message : '編集データを読み込めませんでした')
+      } finally {
+        setLoadingSourceId(null)
+      }
+    },
+    [propertySources, onError]
+  )
+
   /** 物件情報管理システムの図面を読み込む */
   const handlePropertySource = useCallback(
     async (source: PropertySource) => {
@@ -422,19 +444,33 @@ export function UploadPanel({
       {propertySources && propertySources.sources.length > 0 && (
         <div className="property-sources">
           <p className="property-sources__title">物件情報管理システムの図面</p>
-          {propertySources.sources.map((source) => (
-            <button
-              key={source.id}
-              type="button"
-              className="btn btn-secondary property-sources__item"
-              disabled={disabled || busy || loadingSourceId !== null}
-              onClick={() => void handlePropertySource(source)}
-              title={`${source.label}から読み込みます`}
-            >
-              {loadingSourceId === source.id ? '読み込み中…' : source.name}
-              <span className="property-sources__label">{source.label}</span>
-            </button>
-          ))}
+          {propertySources.sources.map((source) =>
+            source.editData && propertySources.loadEditData ? (
+              <button
+                key={source.id}
+                type="button"
+                className="btn btn-primary property-sources__item property-sources__item--edit"
+                disabled={disabled || busy || loadingSourceId !== null}
+                onClick={() => void handleEditData(source)}
+                title="前にこのツールで作って送った間取図を、編集できる状態で開きます（AI の読み取りはしません）"
+              >
+                {loadingSourceId === `${source.id}:data` ? '読み込み中…' : `✎ 続きから編集：${source.name}`}
+                <span className="property-sources__label">前にこのツールで作った間取図（{source.label}）</span>
+              </button>
+            ) : (
+              <button
+                key={source.id}
+                type="button"
+                className="btn btn-secondary property-sources__item"
+                disabled={disabled || busy || loadingSourceId !== null}
+                onClick={() => void handlePropertySource(source)}
+                title={`${source.label}から読み込みます`}
+              >
+                {loadingSourceId === source.id ? '読み込み中…' : source.name}
+                <span className="property-sources__label">{source.label}</span>
+              </button>
+            )
+          )}
         </div>
       )}
 

@@ -67,6 +67,8 @@ import { rectifyPlanStairs } from './utils/stairShape'
 import {
   fetchPropertySourceFile,
   fetchPropertySources,
+  fetchPropertyEditData,
+  buildEditData,
   fileSafeName,
   propertyLinkFromUrl,
   removeUploadFromAddressBar,
@@ -228,6 +230,24 @@ function App() {
   }
 
   const editMode = !!floorPlan && sidebarTab === 'edit'
+
+  /**
+   * 物件へ前に送った間取図を、編集データから開き直す。
+   * 元の平面図は付いていないので、重ねたいときは図面の一覧から読み込む（最後に読み込んだ図面が重なる）
+   */
+  const openSavedPlan = (plan: FloorPlan) => {
+    setPendingRestore(null)
+    resetFloorPlan(rectifyPlanStairs(plan))
+    setFloorSources({})
+    setAnalysisInfo(null)
+    setError(null)
+    setSidebarTab('edit')
+    setAligning(false)
+    setPlanStretch(null)
+    setSelected(null)
+    setMergeRoomIds(null)
+    setPlaceKind(null)
+  }
 
   /** 自動保存から続きを開く。画像は保存した Blob から表示用の URL を作り直す */
   const restoreAutosave = (record: AutosaveRecord) => {
@@ -561,7 +581,14 @@ function App() {
               }}
               propertySources={
                 uploadUrl
-                  ? { sources: propertySources, load: (source) => fetchPropertySourceFile(uploadUrl, source) }
+                  ? {
+                      sources: propertySources,
+                      load: (source) => fetchPropertySourceFile(uploadUrl, source),
+                      loadEditData: async (source) => {
+                        const plan = await fetchPropertyEditData(uploadUrl, source)
+                        openSavedPlan(plan)
+                      },
+                    }
                   : undefined
               }
             />
@@ -657,7 +684,11 @@ function App() {
                 filename={propertyLink ? `間取り図_${fileSafeName(propertyLink.name)}` : 'madorizu'}
                 sendTo={
                   propertyLink?.uploadUrl
-                    ? { uploadUrl: propertyLink.uploadUrl, propertyName: propertyLink.name }
+                    ? {
+                        uploadUrl: propertyLink.uploadUrl,
+                        propertyName: propertyLink.name,
+                        editData: () => buildEditData(floorPlan),
+                      }
                     : undefined
                 }
                 onBeforeExport={() => {
