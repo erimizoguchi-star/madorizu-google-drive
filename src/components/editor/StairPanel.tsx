@@ -2,7 +2,10 @@ import { STAIR_LAYOUT_OPTIONS, STAIR_ORIENTATION_OPTIONS } from '../../constants
 import { LABEL } from '../../renderer/styles'
 import {
   effectiveStairSteps,
+  effectiveStairSteps2,
   getStairBounds,
+  isLShapeLayout,
+  lStairGeometry,
   resolveStairLayout,
   resolveStairOrientation,
 } from '../../renderer/stairGraphics'
@@ -17,7 +20,7 @@ import {
   updateStair,
 } from '../../utils/floorPlanEdit'
 import { getStairLengthMm, STAIR_DEFAULT_WIDTH_MM } from '../../utils/resizeStair'
-import { mmToSvgUnits } from '../../utils/roomGeometry'
+import { mmToSvgUnits, svgUnitsToMm } from '../../utils/roomGeometry'
 import { OffsetFields } from './OffsetFields'
 import { NumberField } from '../NumberField'
 
@@ -51,6 +54,8 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
   }
 
   if (!currentStair) return null
+  const lShape = isLShapeLayout(currentStair.stair.layout)
+  const lGeometry = lShape ? lStairGeometry(currentStair.stair, getStairBounds(currentStair.stair.polygon)) : null
 
   return (
         <div className="room-editor-form">
@@ -66,7 +71,9 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
               value={currentStair.stair.widthMm ?? STAIR_DEFAULT_WIDTH_MM}
               onCommit={(widthMm) => widthMm != null && handleStairField({ widthMm })}
             />
-            <p className="editor-field-hint">標準幅は {STAIR_DEFAULT_WIDTH_MM}mm です。</p>
+            <p className="editor-field-hint">
+              標準幅は {STAIR_DEFAULT_WIDTH_MM}mm です。{lShape ? 'L字・2方向に段では、段の幅（通路の幅）です。' : ''}
+            </p>
           </div>
 
           <div className="editor-field">
@@ -79,8 +86,25 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
               value={getStairLengthMm(currentStair.stair)}
               onCommit={(lengthMm) => lengthMm != null && handleStairField({ lengthMm })}
             />
-            <p className="editor-field-hint">上り方向の長さです。上り始め側は動きません。</p>
+            <p className="editor-field-hint">
+              {lShape ? '曲がる前の長さ（角を含む）です。' : '上り方向の長さです。上り始め側は動きません。'}
+            </p>
           </div>
+
+          {lGeometry && (
+            <div className="editor-field">
+              <label htmlFor="stair-turn-length">曲がったあとの長さ（mm）</label>
+              <NumberField
+                id="stair-turn-length"
+                min={900}
+                max={9000}
+                step={50}
+                value={Math.round(svgUnitsToMm(lGeometry.W))}
+                onCommit={(turnLengthMm) => turnLengthMm != null && handleStairField({ turnLengthMm })}
+              />
+              <p className="editor-field-hint">角を含む長さです。上り始めの側は動きません。</p>
+            </div>
+          )}
 
           <div className="editor-nudge-row">
             <span className="editor-offset-label">位置（50mm）</span>
@@ -127,7 +151,7 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
             />
             <p className="editor-field-hint">
               {currentStair.stair.steps == null ? '今は自動で決めています。' : ''}
-              直線は全体、L字はまっすぐな部分、U字は片側ごとの段数です（曲がる部分の回り段は含みません）。
+              直線は全体、L字はまっすぐな部分（2方向に段は曲がる前）、U字は片側ごとの段数です（曲がる部分の回り段は含みません）。
             </p>
             {currentStair.stair.steps != null && (
               <button type="button" className="editor-reset-btn" onClick={() => handleStairField({ steps: null })}>
@@ -135,6 +159,39 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
               </button>
             )}
           </div>
+
+          {lShape && (
+            <div className="editor-field">
+              <label htmlFor="stair-steps2">曲がったあとの段の数</label>
+              <NumberField
+                id="stair-steps2"
+                min={STAIR_MIN_STEPS}
+                max={STAIR_MAX_STEPS}
+                step={1}
+                value={effectiveStairSteps2(currentStair.stair)}
+                onCommit={(steps2) => steps2 != null && handleStairField({ steps2 })}
+              />
+              {currentStair.stair.steps2 != null && (
+                <button type="button" className="editor-reset-btn" onClick={() => handleStairField({ steps2: null })}>
+                  自動に戻す
+                </button>
+              )}
+            </div>
+          )}
+
+          {lShape && (
+            <div className="editor-field">
+              <label htmlFor="stair-corner">角の作り</label>
+              <select
+                id="stair-corner"
+                value={currentStair.stair.corner ?? 'winder'}
+                onChange={(e) => handleStairField({ corner: e.target.value as 'winder' | 'landing' })}
+              >
+                <option value="winder">回り段（扇形の段）</option>
+                <option value="landing">踊り場</option>
+              </select>
+            </div>
+          )}
 
           <div className="editor-field">
             <label htmlFor="stair-layout">段の形状</label>

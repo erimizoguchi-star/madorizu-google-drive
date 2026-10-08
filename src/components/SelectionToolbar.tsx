@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { DOOR_KIND_OPTIONS, DOOR_KINDS_WITH_SWING } from '../constants/doorOptions'
 import { mirrorStairLayout, nextStairOrientation, STAIR_LAYOUT_OPTIONS } from '../constants/stairOptions'
-import { effectiveStairSteps, getStairBounds, resolveStairLayout, resolveStairOrientation } from '../renderer/stairGraphics'
+import {
+  effectiveStairSteps,
+  effectiveStairSteps2,
+  getStairBounds,
+  isLShapeLayout,
+  resolveStairLayout,
+  resolveStairOrientation,
+} from '../renderer/stairGraphics'
 import { ROOM_TYPE_OPTIONS, isAreaJoHiddenByType } from '../constants/roomTypes'
 import { WINDOW_KIND_OPTIONS, normalizeWindowKind } from '../constants/windowOptions'
 import type { DoorKind, FloorPlan, RoomType, StairLayout, WindowKind } from '../types/floorPlan'
@@ -87,6 +94,10 @@ function StairToolbar({
   const down = stair.direction === 'down'
   const steps = effectiveStairSteps(stair)
   const setSteps = (n: number) => onChange((prev) => updateStair(prev, selected, { steps: n }))
+  const lShape = isLShapeLayout(layout)
+  const steps2 = lShape ? effectiveStairSteps2(stair) : 0
+  const setSteps2 = (n: number) => onChange((prev) => updateStair(prev, selected, { steps2: n }))
+  const landing = stair.corner === 'landing'
   return (
     <div className="selection-toolbar" data-no-pan>
       <select
@@ -120,9 +131,17 @@ function StairToolbar({
       )}
       <span
         className="selection-toolbar__steps"
-        title={layout === 'straight' ? '段の数' : layout.startsWith('u') ? '段の数（片側の、まっすぐな部分）' : '段の数（まっすぐな部分）'}
+        title={
+          layout === 'straight'
+            ? '段の数'
+            : layout.startsWith('u')
+              ? '段の数（片側の、まっすぐな部分）'
+              : lShape
+                ? '曲がる前の段の数（角の回り段は含めない）'
+                : '段の数（まっすぐな部分）'
+        }
       >
-        段
+        {lShape ? '段（前）' : '段'}
         <button
           type="button"
           className="selection-toolbar__btn"
@@ -143,6 +162,40 @@ function StairToolbar({
           ＋
         </button>
       </span>
+      {lShape && (
+        <span className="selection-toolbar__steps" title="曲がったあとの段の数（角の回り段は含めない）">
+          段（後）
+          <button
+            type="button"
+            className="selection-toolbar__btn"
+            aria-label="曲がったあとの段を減らす"
+            disabled={steps2 <= STAIR_MIN_STEPS}
+            onClick={() => setSteps2(steps2 - 1)}
+          >
+            −
+          </button>
+          <strong>{steps2}</strong>
+          <button
+            type="button"
+            className="selection-toolbar__btn"
+            aria-label="曲がったあとの段を増やす"
+            disabled={steps2 >= STAIR_MAX_STEPS}
+            onClick={() => setSteps2(steps2 + 1)}
+          >
+            ＋
+          </button>
+        </span>
+      )}
+      {lShape && (
+        <button
+          type="button"
+          className="selection-toolbar__btn"
+          title="角を、回り段（扇形の段）と踊り場で切り替えます"
+          onClick={() => onChange((prev) => updateStair(prev, selected, { corner: landing ? 'winder' : 'landing' }))}
+        >
+          {landing ? '踊り場 → 回り段' : '回り段 → 踊り場'}
+        </button>
+      )}
       <button
         type="button"
         className="selection-toolbar__btn"

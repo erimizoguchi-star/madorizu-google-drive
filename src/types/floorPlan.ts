@@ -153,6 +153,7 @@ export interface Fixture {
  * - turn-right / turn-left: L字・上り終わりの側で曲がる（右回り＝上りながら右へ）
  * - turn-right-start / turn-left-start: L字・上り始めの側で曲がる
  * - u-right / u-left: U字（折り返し）
+ * - l-right / l-left: L字・2方向に段（輪郭も L 字。まっすぐ上り、角で曲がって、曲がったあとも段が続く）
  */
 export type StairLayout =
   | 'straight'
@@ -162,6 +163,8 @@ export type StairLayout =
   | 'turn-left-start'
   | 'u-right'
   | 'u-left'
+  | 'l-right'
+  | 'l-left'
 
 /** 上り方向（SVG座標: y が小さいほど上） */
 export type StairOrientation = 'up' | 'down' | 'left' | 'right'
@@ -185,6 +188,10 @@ export interface Stair {
    * 省略時は自動（直線は 7 段、L字・U字は長さから）
    */
   steps?: number
+  /** L字・2方向に段の、曲がったあとの段の数。省略時は長さから自動 */
+  steps2?: number
+  /** L字・2方向に段の、角の作り。winder = 回り段（扇形の段）、landing = 踊り場。省略時は回り段 */
+  corner?: 'winder' | 'landing'
   /** 階段幅 mm（省略時 910） */
   widthMm?: number
   /** 表示ラベル用。省略時は direction から UP / DN を出す */

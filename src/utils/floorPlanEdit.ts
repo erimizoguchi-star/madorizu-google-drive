@@ -14,7 +14,8 @@ import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
 import { detectOutwardSide, hasFourWayDirection, hasWindowDirection } from './windowOrientation'
-import { stairRect } from './stairShape'
+import { stairOutline, stairRect } from './stairShape'
+import { getStairBounds, isLShapeLayout, lStairGeometry } from '../renderer/stairGraphics'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
@@ -308,8 +309,14 @@ export function updateStair(
     cutLine?: boolean
     /** 段の数。null で自動に戻す */
     steps?: number | null
+    /** L字・2方向に段の、曲がったあとの段の数。null で自動に戻す */
+    steps2?: number | null
+    /** L字・2方向に段の角: 回り段 / 踊り場 */
+    corner?: 'winder' | 'landing'
     widthMm?: number
     lengthMm?: number
+    /** L字・2方向に段の、曲がったあとの長さ（mm。角を含む） */
+    turnLengthMm?: number
     /** 平行移動（SVG単位） */
     moveBy?: Point
   } & Pick<LabelOffsetPatch, 'nameLabelOffset'>
@@ -345,18 +352,50 @@ export function updateStair(
         else if (typeof patch.steps === 'number' && Number.isFinite(patch.steps)) {
           updated.steps = Math.min(STAIR_MAX_STEPS, Math.max(STAIR_MIN_STEPS, Math.round(patch.steps)))
         }
-        if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
+        if (patch.steps2 === null) delete updated.steps2
+        else if (typeof patch.steps2 === 'number' && Number.isFinite(patch.steps2)) {
+          updated.steps2 = Math.min(STAIR_MAX_STEPS, Math.max(STAIR_MIN_STEPS, Math.round(patch.steps2)))
+        }
+        if (patch.corner === 'landing') updated.corner = 'landing'
+        else if (patch.corner === 'winder') delete updated.corner
+        const lShape = isLShapeLayout(updated.layout)
+        const reshaped =
+          patch.layout !== undefined ||
+          patch.orientation !== undefined ||
+          typeof patch.widthMm === 'number' ||
+          typeof patch.lengthMm === 'number' ||
+          typeof patch.turnLengthMm === 'number'
+        if (lShape) {
+          // L字・2方向に段は、外接する長方形の中に L 字を作る。幅は段の幅（長方形の幅ではない）
+          if (typeof patch.widthMm === 'number' && patch.widthMm > 0) updated.widthMm = Math.round(patch.widthMm)
+          if (typeof patch.lengthMm === 'number' && patch.lengthMm > 0) updated = withStairLength(updated, patch.lengthMm)
+          const width = mmToSvgUnits(updated.widthMm ?? STAIR_DEFAULT_WIDTH_MM)
+          const g = lStairGeometry(updated, getStairBounds(updated.polygon), false)
+          // ほかの形から変えたときは、曲がったあとに段が入るよう、曲がる向きへ段 2つ分以上の長さを取る
+          const turnLength =
+            typeof patch.turnLengthMm === 'number' && patch.turnLengthMm > 0
+              ? mmToSvgUnits(patch.turnLengthMm)
+              : patch.layout !== undefined && !isLShapeLayout(stair.layout) && g.W < width * 1.6
+                ? width * 2
+                : null
+          if (turnLength != null) {
+            // 上り始めの角（s = 0, t = 0）は動かさず、曲がる向きにだけ伸び縮みさせる
+            updated = { ...updated, polygon: stairRect([g.at(0, 0), g.at(g.L, turnLength)]) }
+          }
+        } else if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
           updated = withStairWidth(updated, patch.widthMm)
         } else if (patch.layout !== undefined || patch.orientation !== undefined || patch.orientation === null) {
-          updated = withStairWidth(updated, updated.widthMm ?? STAIR_DEFAULT_WIDTH_MM)
+          // L字・2方向に段から戻したときも、長方形の幅を階段の幅に合わせ直す
+          updated = withStairWidth({ ...updated, polygon: stairRect(updated.polygon) }, updated.widthMm ?? STAIR_DEFAULT_WIDTH_MM)
         }
-        if (typeof patch.lengthMm === 'number' && patch.lengthMm > 0) {
+        if (!lShape && typeof patch.lengthMm === 'number' && patch.lengthMm > 0) {
           updated = withStairLength(updated, patch.lengthMm)
         }
         // 平行移動は moveStair / setStairPolygon 側で開口追従と壁同期する
         updated = applyLabelOffsetPatch(updated, patch)
-        // 輪郭は長方形にそろえる（ゆがんでいると三角形に切り抜かれて表示される）
-        updated = { ...updated, polygon: stairRect(updated.polygon) }
+        // 輪郭は長方形（L字・2方向に段は L 字）にそろえる（ゆがんでいると三角形に切り抜かれて表示される）。
+        // 形・向き・大きさを変えたときは、L 字の幅を階段の幅から決め直す
+        updated = { ...updated, polygon: stairOutline(updated, !reshaped) }
         return updated
       }),
     }

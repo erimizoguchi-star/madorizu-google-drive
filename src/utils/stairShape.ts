@@ -1,5 +1,6 @@
-import type { Floor, FloorPlan, Point } from '../types/floorPlan'
+import type { Floor, FloorPlan, Point, Stair } from '../types/floorPlan'
 import { syncFloorWalls } from './ensureExteriorWalls'
+import { getStairBounds, isLShapeLayout, lStairGeometry } from '../renderer/stairGraphics'
 
 /**
  * 階段の輪郭は長方形にそろえる。
@@ -36,12 +37,35 @@ export function isStairRect(polygon: Point[]): boolean {
     })
 }
 
-/** 階の階段を長方形にそろえる。変えたときだけ壁を作り直す */
+/**
+ * 階段のあるべき輪郭。ふつうは外接する長方形、L字・2方向に段は L 字。
+ * fromPolygon = false のときは、L 字の幅を今の輪郭ではなく階段の幅から決め直す（形や向きを変えたとき）
+ */
+export function stairOutline(stair: Stair, fromPolygon = true): Point[] {
+  if (stair.polygon.length === 0) return stair.polygon
+  if (isLShapeLayout(stair.layout)) return lStairGeometry(stair, getStairBounds(stair.polygon), fromPolygon).outline
+  return stairRect(stair.polygon)
+}
+
+function samePolygon(a: Point[], b: Point[]): boolean {
+  return (
+    a.length === b.length &&
+    b.every((q) => a.some((p) => Math.abs(p.x - q.x) < EPS && Math.abs(p.y - q.y) < EPS)) &&
+    a.every((p, i) => {
+      // 隣り合う点は縦か横に並ぶ（ねじれた順番を除く）
+      const q = a[(i + 1) % a.length]
+      return Math.abs(p.x - q.x) < EPS || Math.abs(p.y - q.y) < EPS
+    })
+  )
+}
+
+/** 階の階段を、あるべき輪郭（長方形・L 字）にそろえる。変えたときだけ壁を作り直す */
 export function rectifyFloorStairs(floor: Floor): Floor {
-  if (floor.stairs.every((s) => isStairRect(s.polygon))) return floor
+  const outlines = floor.stairs.map((s) => stairOutline(s))
+  if (floor.stairs.every((s, i) => samePolygon(s.polygon, outlines[i]))) return floor
   return syncFloorWalls({
     ...floor,
-    stairs: floor.stairs.map((s) => (isStairRect(s.polygon) ? s : { ...s, polygon: stairRect(s.polygon) })),
+    stairs: floor.stairs.map((s, i) => (samePolygon(s.polygon, outlines[i]) ? s : { ...s, polygon: outlines[i] })),
   })
 }
 

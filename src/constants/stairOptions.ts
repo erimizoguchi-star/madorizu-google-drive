@@ -8,6 +8,8 @@ export const STAIR_LAYOUT_OPTIONS: { value: StairLayout; label: string }[] = [
   { value: 'turn-left-start', label: 'L字・下で曲がる（左回り）' },
   { value: 'u-right', label: 'U字・折り返し（右回り）' },
   { value: 'u-left', label: 'U字・折り返し（左回り）' },
+  { value: 'l-right', label: 'L字・2方向に段（右回り）' },
+  { value: 'l-left', label: 'L字・2方向に段（左回り）' },
 ]
 
 /** 右回り ⇔ 左回り（同じ形のまま曲がる向きだけ反対にする） */
@@ -20,6 +22,8 @@ export function mirrorStairLayout(layout: StairLayout): StairLayout {
     'turn-left-start': 'turn-right-start',
     'u-right': 'u-left',
     'u-left': 'u-right',
+    'l-right': 'l-left',
+    'l-left': 'l-right',
   }
   return pairs[layout]
 }
