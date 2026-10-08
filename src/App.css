@@ -1466,6 +1466,54 @@
   color: #8B5A52;
 }
 
+.edit-time-status {
+  font-size: 0.75rem;
+  color: #6B6459;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 編集時間の記録（出力タブ） */
+.edit-time-panel {
+  margin-top: 0.75rem;
+  font-size: 0.78rem;
+}
+
+.edit-time-panel summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.edit-time-panel__summary {
+  font-weight: 400;
+  color: #6B6459;
+}
+
+.edit-time-panel__table {
+  width: 100%;
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.edit-time-panel__table th,
+.edit-time-panel__table td {
+  padding: 0.2rem 0.3rem;
+  border-bottom: 1px solid #E8E4DC;
+  text-align: left;
+}
+
+.edit-time-panel__table td.is-goal {
+  color: #2E8B57;
+  font-weight: 600;
+}
+
+.edit-time-panel__hint {
+  margin: 0.4rem 0 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
 .sidebar-tabs {
   position: sticky;
   top: calc(-1 * var(--sidebar-pad-y, 1.5rem));

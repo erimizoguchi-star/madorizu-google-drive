@@ -270,4 +270,6 @@ export interface AnalysisResult {
   mode: 'demo' | 'gemini'
   sourcePreviewUrl?: string
   sourceFileName?: string
+  /** AI の読み取りを待った時間（ミリ秒）。編集時間の記録に使う */
+  analysisMs?: number
 }

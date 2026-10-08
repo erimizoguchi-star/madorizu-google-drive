@@ -19,12 +19,23 @@ import { FloorPlanView } from './renderer/FloorPlanView'
 import { LEGEND_ITEMS, ROOM_COLORS } from './renderer/styles'
 import { useFloorPlanHistory } from './hooks/useFloorPlanHistory'
 import { useAutosave } from './hooks/useAutosave'
+import { useEditTimer } from './hooks/useEditTimer'
+import {
+  formatDuration,
+  loadEditHistory,
+  newEditStats,
+  saveEditRecord,
+  type EditRecord,
+  type EditStats,
+} from './services/editTime'
+import { EditTimePanel } from './components/EditTimePanel'
 import {
   autosaveKey,
   clearAutosave,
   describeAutosave,
   loadAutosave,
   type AutosaveRecord,
+  autosaveEditStats,
 } from './services/autosave'
 import type { AnalysisResult, FloorPlan, Point } from './types/floorPlan'
 import type { SelectedElementRef, SelectOptions } from './utils/floorPlanEdit'
@@ -138,6 +149,9 @@ function App() {
       cancelled = true
     }
   }, [saveKey])
+  // 編集にかかった時間（操作していた時間だけ）。「10分で終える」に近づいたかを見るために記録する
+  const editTimer = useEditTimer(!!floorPlan)
+  const [editHistory, setEditHistory] = useState<EditRecord[]>(() => loadEditHistory())
   const autosave = useAutosave({
     key: saveKey,
     floorPlan,
@@ -145,7 +159,24 @@ function App() {
     sourcePreview,
     overlayFloorId,
     enabled: restoreChecked && !pendingRestore,
+    getEditStats: editTimer.snapshot,
   })
+  /** 物件へ送った・出力したときに、この間取図の編集時間を記録する（送り直したら上書き） */
+  const recordEditFinish = () => {
+    const stats = editTimer.snapshot()
+    if (!stats || !floorPlan) return
+    setEditHistory(
+      saveEditRecord({
+        sessionId: stats.sessionId,
+        finishedAt: new Date().toISOString(),
+        title: floorPlan.title,
+        ...(propertyLink?.name ? { propertyName: propertyLink.name } : {}),
+        floors: floorPlan.floors.length,
+        activeMs: stats.activeMs,
+        analysisMs: stats.analysisMs,
+      })
+    )
+  }
   const [analysisInfo, setAnalysisInfo] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   /** サイドバーの作業段階。編集タブを開いている間が「編集モード」 */
@@ -185,6 +216,7 @@ function App() {
       }
       // 階の追加も「元に戻す」で取り消せるよう、履歴に積む
       commit(appended.floorPlan)
+      editTimer.addAnalysis(result.analysisMs ?? 0)
       // 追加した階には今回の図面を覚え、重ねる対象もその階にする。重ね方は新しい階で合わせ直すので一度外す
       const source = result.sourcePreviewUrl && result.sourceFileName
         ? { url: result.sourcePreviewUrl, fileName: result.sourceFileName }
@@ -200,6 +232,7 @@ function App() {
       setOverlay((prev) => ({ ...prev, enabled: false, adjusting: false, calibrating: false, rotation: 0 }))
     } else {
       resetFloorPlan(result.floorPlan)
+      editTimer.start(newEditStats(result.analysisMs ?? 0))
       // 前の図面に合わせた大きさ・位置・傾きは使えないので、重ねているなら合わせ直す
       setOverlay((prev) => ({
         ...prev,
@@ -235,9 +268,11 @@ function App() {
    * 物件へ前に送った間取図を、編集データから開き直す。
    * 元の平面図は付いていないので、重ねたいときは図面の一覧から読み込む（最後に読み込んだ図面が重なる）
    */
-  const openSavedPlan = (plan: FloorPlan) => {
+  const openSavedPlan = (plan: FloorPlan, editStats: EditStats | null) => {
     setPendingRestore(null)
     resetFloorPlan(rectifyPlanStairs(plan))
+    // 前に送ったときまでの編集時間に、続けて足していく
+    editTimer.start(editStats)
     setFloorSources({})
     setAnalysisInfo(null)
     setError(null)
@@ -260,6 +295,7 @@ function App() {
     }
     setPendingRestore(null)
     resetFloorPlan(rectifyPlanStairs(record.floorPlan))
+    editTimer.start(autosaveEditStats(record))
     setFloorSources(sources)
     setSourcePreview(latest ?? Object.values(sources)[0] ?? null)
     setOverlayFloorId(record.overlayFloorId)
@@ -585,8 +621,8 @@ function App() {
                       sources: propertySources,
                       load: (source) => fetchPropertySourceFile(uploadUrl, source),
                       loadEditData: async (source) => {
-                        const plan = await fetchPropertyEditData(uploadUrl, source)
-                        openSavedPlan(plan)
+                        const { floorPlan: plan, editStats } = await fetchPropertyEditData(uploadUrl, source)
+                        openSavedPlan(plan, editStats)
                       },
                     }
                   : undefined
@@ -687,10 +723,11 @@ function App() {
                     ? {
                         uploadUrl: propertyLink.uploadUrl,
                         propertyName: propertyLink.name,
-                        editData: () => buildEditData(floorPlan),
+                        editData: () => buildEditData(floorPlan, editTimer.snapshot()),
                       }
                     : undefined
                 }
+                onFinished={recordEditFinish}
                 onBeforeExport={() => {
                   // 選択枠・編集ハンドル・線合わせの線が画像に写り込まないよう解除してから出力する
                   setAligning(false)
@@ -701,6 +738,7 @@ function App() {
                   setPlaceWallTarget(null)
                 }}
               />
+              <EditTimePanel history={editHistory} />
               <SavedPlansPanel
                 floorPlan={floorPlan}
                 currentId={savedPlanId}
@@ -708,6 +746,7 @@ function App() {
                 onLoad={(plan) => {
                   setPendingRestore(null)
                   resetFloorPlan(rectifyPlanStairs(plan))
+                  editTimer.start()
                   setSidebarTab('edit')
                   setSelected(null)
                   setMergeRoomIds(null)
@@ -719,6 +758,7 @@ function App() {
                 onImport={(plan) => {
                   setPendingRestore(null)
                   resetFloorPlan(plan)
+                  editTimer.start()
                   setSidebarTab('edit')
                   setSelected(null)
                   setMergeRoomIds(null)
@@ -796,6 +836,12 @@ function App() {
                   </button>
                 </span>
               )}
+              <span
+                className="edit-time-status"
+                title="この間取図の編集にかかった時間です（操作していた時間だけ。2分以上操作がない間は数えません）。物件へ送る・出力すると記録されます"
+              >
+                ⏱ 編集 {formatDuration(editTimer.activeMs)}
+              </span>
               {(autosave.savedAt || autosave.failed) && (
                 <span
                   className={`autosave-status ${autosave.failed ? 'is-error' : ''}`}
