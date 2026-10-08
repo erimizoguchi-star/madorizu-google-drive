@@ -223,9 +223,149 @@ export function effectiveStairSteps(stair: Stair): number {
   const layout = resolveStairLayout(stair)
   if (layout === 'straight') return STRAIGHT_DEFAULT_STEPS
   const bounds = getStairBounds(stair.polygon)
+  if (isLShapeLayout(layout)) {
+    const { L, w2 } = lStairGeometry(stair, bounds)
+    return Math.max(2, Math.round((L - w2) / TREAD))
+  }
   const { L, W } = runFrame(bounds, resolveStairOrientation(stair, bounds))
   if (layout === 'u-right' || layout === 'u-left') return Math.max(3, Math.round((L - uTurnDepth(L, W)) / TREAD))
   return Math.max(2, Math.round((L - lTurnDepth(L, W)) / TREAD))
+}
+
+/** L字・2方向に段（輪郭も L 字）か */
+export function isLShapeLayout(layout: StairLayout | undefined): layout is 'l-right' | 'l-left' {
+  return layout === 'l-right' || layout === 'l-left'
+}
+
+/** 曲がったあとの段の数（L字・2方向に段のときだけ意味がある） */
+export function effectiveStairSteps2(stair: Stair): number {
+  if (stair.steps2 != null && stair.steps2 >= 2) return Math.round(stair.steps2)
+  const { W, w1 } = lStairGeometry(stair, getStairBounds(stair.polygon))
+  return Math.max(2, Math.round((W - w1) / TREAD))
+}
+
+const SAME = 0.05
+
+/**
+ * L字・2方向に段の形。上る向きを基準にした座標（s = 上る向き、t = 曲がる向き）で、
+ * 1本目は s∈[0, L]・t∈[0, w1]、角は s∈[L-w2, L]・t∈[0, w1]、曲がったあとは s∈[L-w2, L]・t∈[w1, W]。
+ * w1・w2 は段の幅（1本目と曲がったあと）。輪郭が L 字になっていればその形から、そうでなければ階段の幅から決める
+ * （線合わせで内側の角を動かしたときに、その幅を保てるように）。
+ */
+export function lStairGeometry(stair: Stair, bounds: StairBounds, fromPolygon = true) {
+  const orientation = resolveStairOrientation(stair, bounds)
+  const frame = runFrame(bounds, orientation)
+  const { L, W } = frame
+  const right = stair.layout !== 'l-left'
+  // 左回りは右回りを左右に映したもの
+  const at = (s: number, t: number) => frame.at(s, right ? t : W - t)
+  const outline = (w1: number, w2: number): Point[] =>
+    [
+      [0, 0],
+      [L, 0],
+      [L, W],
+      [L - w2, W],
+      [L - w2, w1],
+      [0, w1],
+    ].map(([a, b]) => at(a, b))
+
+  const width = (stair.widthMm ?? 910) / 10
+  const fit = (w: number, max: number) => Math.max(Math.min(w, max * 0.8), Math.min(max * 0.5, 10))
+  let w1 = fit(width, W)
+  let w2 = fit(width, L)
+
+  const poly = stair.polygon
+  if (fromPolygon && poly.length === 6) {
+    // 外接する長方形の内側にある1点が、L 字の内側の角
+    const inner = poly.find(
+      (p) => p.x > bounds.minX + SAME && p.x < bounds.maxX - SAME && p.y > bounds.minY + SAME && p.y < bounds.maxY - SAME
+    )
+    if (inner) {
+      // 内側の角が outline(c1, c2) の (L-c2, c1) に来る c1・c2 を、4通りの点の対応から探す
+      for (const [c1, c2] of candidateLegs(inner, at, L, W)) {
+        const shape = outline(c1, c2)
+        const same = shape.every((q) => poly.some((p) => Math.abs(p.x - q.x) < SAME && Math.abs(p.y - q.y) < SAME))
+        if (same) {
+          w1 = c1
+          w2 = c2
+          break
+        }
+      }
+    }
+  }
+  return { orientation, L, W, at, w1, w2, right, outline: outline(w1, w2) }
+}
+
+/** 内側の角の点から、1本目の幅と角の奥行の候補を求める（frame の向きの逆算は、軸ごとの差で行う） */
+function candidateLegs(
+  inner: Point,
+  at: (s: number, t: number) => Point,
+  L: number,
+  W: number
+): Array<[number, number]> {
+  const o = at(0, 0)
+  const sAxis = at(1, 0)
+  const tAxis = at(0, 1)
+  const ds = { x: sAxis.x - o.x, y: sAxis.y - o.y }
+  const dt = { x: tAxis.x - o.x, y: tAxis.y - o.y }
+  const v = { x: inner.x - o.x, y: inner.y - o.y }
+  const s = v.x * ds.x + v.y * ds.y
+  const t = v.x * dt.x + v.y * dt.y
+  if (s <= 0 || s >= L || t <= 0 || t >= W) return []
+  return [[t, L - s]]
+}
+
+/**
+ * L字・2方向に段。まっすぐ上り、角（回り段か踊り場）で曲がり、曲がったあとも段が続く。
+ * 回り段は、内側の角（手すりの柱の位置）から扇状に 3 段に分ける
+ */
+function lShapeGraphics(stair: Stair, bounds: StairBounds, steps?: number, steps2?: number) {
+  const { L, W, at, w1, w2 } = lStairGeometry(stair, bounds)
+  const line = (a: Point, b: Point): StairGraphicLine => ({ x1: a.x, y1: a.y, x2: b.x, y2: b.y })
+  const stepLines: StairGraphicLine[] = []
+  const run1 = L - w2
+  const run2 = W - w1
+
+  // 1本目の段
+  const n1 = steps ?? Math.max(2, Math.round(run1 / TREAD))
+  for (let k = 1; k < n1; k++) {
+    const sk = (run1 * k) / n1
+    stepLines.push(line(at(sk, 0), at(sk, w1)))
+  }
+  // 1本目と角の境、角と曲がったあとの境
+  stepLines.push(line(at(run1, 0), at(run1, w1)))
+  stepLines.push(line(at(run1, w1), at(L, w1)))
+
+  // 回り段: 内側の角から 30° と 60° の線（踊り場のときは引かない）
+  if (stair.corner !== 'landing') {
+    for (const deg of [30, 60]) {
+      const a = (deg * Math.PI) / 180
+      const ds = Math.sin(a)
+      const dt = -Math.cos(a)
+      const k = Math.min((L - run1) / ds, w1 / -dt)
+      stepLines.push(line(at(run1, w1), at(run1 + ds * k, w1 + dt * k)))
+    }
+  }
+
+  // 曲がったあとの段
+  const n2 = steps2 ?? Math.max(2, Math.round(run2 / TREAD))
+  for (let k = 1; k < n2; k++) {
+    const tk = w1 + (run2 * k) / n2
+    stepLines.push(line(at(run1, tk), at(L, tk)))
+  }
+
+  // 矢印（通路の中央を通る）
+  const inset1 = Math.min(w1, run1) * 0.3
+  const inset2 = Math.min(w2, run2) * 0.3
+  const points = [at(inset1, w1 / 2), at(L - w2 / 2, w1 / 2), at(L - w2 / 2, W - inset2)]
+  const a = points[points.length - 2]
+  const b = points[points.length - 1]
+  const arrowPath: StairArrowPath = {
+    start: points[0],
+    points,
+    tipAngleDeg: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI,
+  }
+  return { stepLines, arrowPath, laneWidth: Math.min(w1, w2) }
 }
 
 /**
@@ -400,6 +540,12 @@ export function computeStairGraphics(stair: Stair, stepCount = STRAIGHT_DEFAULT_
   if (layout === 'straight') {
     stepLines = straightSteps(bounds, orientation, steps ?? stepCount)
     ascent = buildStraightArrowPath(bounds, orientation)
+  } else if (isLShapeLayout(layout)) {
+    const steps2 = stair.steps2 != null && stair.steps2 >= 2 ? Math.round(stair.steps2) : undefined
+    const l = lShapeGraphics(stair, bounds, steps, steps2)
+    stepLines = l.stepLines
+    ascent = l.arrowPath
+    laneWidth = l.laneWidth
   } else if (layout !== 'u-right' && layout !== 'u-left') {
     // L字（上で曲がる・下で曲がる）。以前の作りは下向き・左向きに上る階段で曲がる側と回り段の向きが食い違っていた
     const right = layout === 'turn-right' || layout === 'turn-right-start'
@@ -451,7 +597,8 @@ export function computeStairGraphics(stair: Stair, stepCount = STRAIGHT_DEFAULT_
   const first = arrowPath.points[1] ?? arrowPath.points[0]
   const len = Math.hypot(first.x - arrowPath.start.x, first.y - arrowPath.start.y) || 1
   const d = { x: (first.x - arrowPath.start.x) / len, y: (first.y - arrowPath.start.y) / len }
-  const turnsRight = layout === 'turn-right' || layout === 'turn-right-start' || layout === 'u-right'
+  const turnsRight =
+    layout === 'turn-right' || layout === 'turn-right-start' || layout === 'u-right' || layout === 'l-right'
   const side = layout === 'straight' ? 1 : turnsRight !== down ? -1 : 1
   const off = Math.min(Math.max(laneWidth * 0.28, 10), 30)
   const labelPoint = {

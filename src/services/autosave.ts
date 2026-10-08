@@ -1,4 +1,5 @@
 import type { FloorPlan } from '../types/floorPlan'
+import { isEditStats, type EditStats } from './editTime'
 
 /**
  * 編集中の間取図の自動保存（ブラウザの IndexedDB）。
@@ -23,6 +24,8 @@ export interface AutosaveRecord {
   floorPlan: FloorPlan
   sources: AutosaveSource[]
   overlayFloorId: string | null
+  /** 編集にかかった時間（続きから編集したときに、続けて数える） */
+  editStats?: EditStats
 }
 
 const DB_NAME = 'madorizu'
@@ -97,4 +100,9 @@ export function describeAutosave(record: AutosaveRecord): string {
     : `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   const floors = record.floorPlan.floors.map((f) => f.label).join('・')
   return [floors, when].filter(Boolean).join('、')
+}
+
+/** 保存してあった編集時間。古い保存（記録なし）や壊れたものは null */
+export function autosaveEditStats(record: AutosaveRecord): EditStats | null {
+  return isEditStats(record.editStats) ? record.editStats : null
 }

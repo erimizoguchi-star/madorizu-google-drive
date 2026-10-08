@@ -1,4 +1,5 @@
 import type { FloorPlan } from '../types/floorPlan'
+import { isEditStats, type EditStats } from '../services/editTime'
 
 // 物件情報管理システム（広告シートの「間取り図を作る」）から開かれたときに URL で渡される物件情報。
 //   ?property=物件ID&name=表示名&upload=送り先
@@ -89,10 +90,18 @@ interface EditData {
   version: 1
   savedAt: string
   floorPlan: FloorPlan
+  /** 編集にかかった時間（別の PC で続きから編集したときも、続けて数える） */
+  editStats?: EditStats
 }
 
-export function buildEditData(floorPlan: FloorPlan): Blob {
-  const data: EditData = { format: 'madorizu-edit', version: 1, savedAt: new Date().toISOString(), floorPlan }
+export function buildEditData(floorPlan: FloorPlan, editStats?: EditStats | null): Blob {
+  const data: EditData = {
+    format: 'madorizu-edit',
+    version: 1,
+    savedAt: new Date().toISOString(),
+    floorPlan,
+    ...(editStats ? { editStats } : {}),
+  }
   return new Blob([JSON.stringify(data)], { type: 'application/json' })
 }
 
@@ -106,8 +115,17 @@ export function parseEditData(json: unknown): FloorPlan | null {
   return data.floorPlan
 }
 
+/** 編集データに付いている編集時間。なければ null */
+export function parseEditDataStats(json: unknown): EditStats | null {
+  const stats = (json as Partial<EditData> | null)?.editStats
+  return isEditStats(stats) ? stats : null
+}
+
 /** 物件の間取り図の枠にある画像に付いた編集データを読み込む */
-export async function fetchPropertyEditData(uploadUrl: string, source: PropertySource): Promise<FloorPlan> {
+export async function fetchPropertyEditData(
+  uploadUrl: string,
+  source: PropertySource
+): Promise<{ floorPlan: FloorPlan; editStats: EditStats | null }> {
   const url = new URL(uploadUrl)
   url.searchParams.set('file', source.id)
   url.searchParams.set('data', '1')
@@ -119,7 +137,7 @@ export async function fetchPropertyEditData(uploadUrl: string, source: PropertyS
   }
   const plan = parseEditData(json)
   if (!plan) throw new Error('編集データの形が正しくありません')
-  return plan
+  return { floorPlan: plan, editStats: parseEditDataStats(json) }
 }
 
 /**

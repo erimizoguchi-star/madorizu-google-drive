@@ -22,7 +22,8 @@ import { syncFloorWalls } from './ensureExteriorWalls'
 import { orientWindowsOutward } from './windowOrientation'
 import { mmToSvgUnits } from './roomGeometry'
 import { STAIR_DEFAULT_WIDTH_MM, withStairWidth } from './resizeStair'
-import { stairRect } from './stairShape'
+import { stairOutline, stairRect } from './stairShape'
+import { isLShapeLayout } from '../renderer/stairGraphics'
 
 const VALID_ROOM_TYPES = new Set<RoomType>([
   'ld',
@@ -521,6 +522,8 @@ const STAIR_LAYOUTS: StairLayout[] = [
   'turn-left-start',
   'u-right',
   'u-left',
+  'l-right',
+  'l-left',
 ]
 const STAIR_ORIENTATIONS: StairOrientation[] = ['up', 'down', 'left', 'right']
 
@@ -556,10 +559,16 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
     polygon: scaledPolygon,
   }
   // 段の数は 2〜30 の整数だけ残す（おかしな値なら自動に戻す）
-  if (typeof base.steps === 'number' && Number.isFinite(base.steps) && base.steps >= 2) {
-    base.steps = Math.min(30, Math.round(base.steps))
-  } else {
-    delete base.steps
+  for (const key of ['steps', 'steps2'] as const) {
+    const n = base[key]
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 2) base[key] = Math.min(30, Math.round(n))
+    else delete base[key]
+  }
+  if (base.corner !== 'landing') delete base.corner
+  // L字・2方向に段は、外接する長方形の中の L 字（段の幅は widthMm）。長方形の幅は変えない
+  if (isLShapeLayout(layout)) {
+    const lPolygon = useMm ? scalePolygon(preparedPolygon) : preparedPolygon
+    return { ...base, polygon: stairOutline({ ...base, polygon: lPolygon }) }
   }
   // 幅は 910mm（または明示指定）に揃える。生じた隙間は closeCoverageGaps で埋める
   return withStairWidth(base, widthMm)

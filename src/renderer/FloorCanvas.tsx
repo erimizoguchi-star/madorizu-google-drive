@@ -2,7 +2,7 @@ import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } fro
 import type { Fixture, Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
-import { CANVAS } from './styles'
+import { CANVAS, polygonArea } from './styles'
 import { DoorRenderer } from './DoorRenderer'
 import { doorPaintExtentPoints } from './doorPaintBounds'
 import { FLOOR_CANVAS_PADDING, getFloorBounds } from './floorCanvasGeometry'
@@ -12,6 +12,8 @@ import { RoomLabels } from './RoomLabels'
 import { computeRoomLabelLayout, computeStairLabelLayout } from './roomLabelLayout'
 import { RoomRenderer } from './RoomRenderer'
 import { RoomResizeHandles } from './RoomResizeHandles'
+import { StairResizeHandles } from './StairResizeHandles'
+import { isHorizontalStairEdge } from '../utils/resizeStair'
 import { StairRenderer } from './StairRenderer'
 import { WallRenderer } from './WallRenderer'
 import { WindowRenderer } from './WindowRenderer'
@@ -45,6 +47,7 @@ interface FloorCanvasProps {
   onRoomSelect?: (roomId: string, additive?: boolean) => void
   onStairSelect?: (stairId: string) => void
   onStairMove?: (stairId: string, polygonFloor: Point[]) => void
+  onStairResize?: (stairId: string, edgeIndex: number, value: number, start: Point[]) => void
   onWallSelect?: (wallId: string) => void
   onDoorSelect?: (doorId: string) => void
   onWindowSelect?: (windowId: string) => void
@@ -92,6 +95,7 @@ export function FloorCanvas({
   onRoomSelect,
   onStairSelect,
   onStairMove,
+  onStairResize,
   onWallSelect,
   onDoorSelect,
   onWindowSelect,
@@ -275,7 +279,11 @@ export function FloorCanvas({
             fill={CANVAS.background}
           />
           <g className="rooms-layer">
-            {transformedFloor.rooms.map((room) => (
+            {/* 大きい部屋から描き、小さい部屋を上にする。部屋の形が重なっていても、
+                小さい部屋（洗面室など）の色・模様が大きい部屋（LD など）に隠れないように */}
+            {[...transformedFloor.rooms]
+              .sort((a, b) => polygonArea(b.polygon) - polygonArea(a.polygon))
+              .map((room) => (
               <RoomRenderer
                 key={room.id}
                 room={room}
@@ -436,6 +444,24 @@ export function FloorCanvas({
               />
             ))}
           </g>
+          {editable && selectedStairId && onStairResize && (() => {
+            const stair = transformedFloor.stairs.find((s) => s.id === selectedStairId)
+            if (!stair || stair.polygon.length < 4) return null
+            return (
+              <g className="resize-handles-layer">
+                <StairResizeHandles
+                  polygon={stair.polygon}
+                  floorOffset={floorOffset}
+                  onResize={(edgeIndex, value, start) => {
+                    // ほかの部屋・階段の辺の近くでは吸い付かせる（部屋の辺と同じ）
+                    const axis = isHorizontalStairEdge(start, edgeIndex) ? 'y' : 'x'
+                    const others = otherEdgeValues(floor, axis, selectedStairId)
+                    onStairResize(selectedStairId, edgeIndex, snapToNearest(value, others, edgeSnap), start)
+                  }}
+                />
+              </g>
+            )
+          })()}
           {selectedRoomRectCanvas && onRoomResize && selectedRoomId && (
             <g className="resize-handles-layer">
               <RoomResizeHandles

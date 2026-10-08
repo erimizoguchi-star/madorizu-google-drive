@@ -20,6 +20,8 @@ interface ExportButtonProps {
    * 物件情報管理システムから開かれたときの送り先。指定があると「物件情報管理システムへ送る」ボタンを出す。
    * 送ると、その物件の広告シート（間取り図の枠）に直接入る。
    */
+  /** 出力・物件への送信がすんだとき（編集時間の記録に使う） */
+  onFinished?: () => void
   sendTo?: {
     uploadUrl: string
     propertyName: string
@@ -35,13 +37,14 @@ function afterRepaint(): Promise<void> {
   })
 }
 
-export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport, sendTo }: ExportButtonProps) {
+export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport, onFinished, sendTo }: ExportButtonProps) {
   const [sendState, setSendState] = useState<{ busy: boolean; ok?: boolean; message?: string }>({ busy: false })
 
   const run = async (exporter: () => void | Promise<void>) => {
     onBeforeExport?.()
     await afterRepaint()
     await exporter()
+    onFinished?.()
   }
 
   const send = async () => {
@@ -56,6 +59,7 @@ export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport, 
     }
     const result = await sendImageToPropertySystem(sendTo.uploadUrl, blob, `${filename}.jpg`, sendTo.editData?.())
     setSendState({ busy: false, ...result })
+    if (result.ok) onFinished?.()
   }
 
   return (

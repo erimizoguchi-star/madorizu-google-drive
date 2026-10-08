@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FloorPlan } from '../types/floorPlan'
 import { saveAutosave, type AutosaveSource } from '../services/autosave'
+import type { EditStats } from '../services/editTime'
 
 type Source = { url: string; fileName: string }
 
@@ -15,13 +16,27 @@ interface UseAutosaveParams {
   overlayFloorId: string | null
   /** false の間は保存しない（前回の保存を「続きから編集」するか決める前に上書きしないため） */
   enabled: boolean
+  /** 保存するときの編集時間 */
+  getEditStats?: () => EditStats | null
 }
 
 /**
  * 編集中の間取図と、階ごとの元の平面図を自動で保存する。
  * 画像は表示用の URL（blob: / data:）から取り出して Blob で保存する。同じ画像は一度だけ取り出す。
  */
-export function useAutosave({ key, floorPlan, floorSources, sourcePreview, overlayFloorId, enabled }: UseAutosaveParams) {
+export function useAutosave({
+  key,
+  floorPlan,
+  floorSources,
+  sourcePreview,
+  overlayFloorId,
+  enabled,
+  getEditStats,
+}: UseAutosaveParams) {
+  const getEditStatsRef = useRef(getEditStats)
+  useEffect(() => {
+    getEditStatsRef.current = getEditStats
+  })
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [failed, setFailed] = useState(false)
   const blobCache = useRef(new Map<string, Blob>())
@@ -61,7 +76,8 @@ export function useAutosave({ key, floorPlan, floorSources, sourcePreview, overl
           }
         }
         if (cancelled) return
-        await saveAutosave(key, { savedAt: new Date().toISOString(), floorPlan, sources, overlayFloorId })
+        const editStats = getEditStatsRef.current?.() ?? undefined
+        await saveAutosave(key, { savedAt: new Date().toISOString(), floorPlan, sources, overlayFloorId, editStats })
         if (cancelled) return
         setSavedAt(new Date())
         setFailed(false)

@@ -102,6 +102,7 @@ export function UploadPanel({
       }
 
       setAnalyzing(true)
+      const startedAt = Date.now()
       try {
         if (mode === 'gemini' && normalized) {
           localStorage.setItem(STORAGE_KEY, normalized)
@@ -112,6 +113,7 @@ export function UploadPanel({
           useServerKey,
           quality: highQuality ? 'high' : 'standard',
         })
+        result.analysisMs = mode === 'gemini' ? Date.now() - startedAt : 0
         result.sourcePreviewUrl = input.previewUrl
         result.sourceFileName = sourceName
         if (input.sourceType === 'pdf') {

@@ -3,18 +3,21 @@ import { doorKindLabel } from '../constants/doorOptions'
 import { windowKindLabel } from '../constants/windowOptions'
 import { defaultFixtureSizeMm, fixtureTypeLabel } from '../constants/fixtureOptions'
 import {
+  getStairWidthAxis,
+  moveStairEdge,
   STAIR_DEFAULT_WIDTH_MM,
   withStairLength,
   withStairWidth,
 } from './resizeStair'
 import { isAreaJoHiddenByType, toJapaneseRoomName } from '../constants/roomTypes'
 import type { LabelLineKind } from '../renderer/roomLabelLayout'
-import { mmToSvgUnits, snapSvgToMmGrid, type RectEdge } from './roomGeometry'
+import { mmToSvgUnits, snapSvgToMmGrid, svgUnitsToMm, type RectEdge } from './roomGeometry'
 import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom'
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
 import { detectOutwardSide, hasFourWayDirection, hasWindowDirection } from './windowOrientation'
-import { stairRect } from './stairShape'
+import { stairOutline, stairRect } from './stairShape'
+import { getStairBounds, isLShapeLayout, lStairGeometry, resolveStairOrientation } from '../renderer/stairGraphics'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
@@ -308,8 +311,14 @@ export function updateStair(
     cutLine?: boolean
     /** 段の数。null で自動に戻す */
     steps?: number | null
+    /** L字・2方向に段の、曲がったあとの段の数。null で自動に戻す */
+    steps2?: number | null
+    /** L字・2方向に段の角: 回り段 / 踊り場 */
+    corner?: 'winder' | 'landing'
     widthMm?: number
     lengthMm?: number
+    /** L字・2方向に段の、曲がったあとの長さ（mm。角を含む） */
+    turnLengthMm?: number
     /** 平行移動（SVG単位） */
     moveBy?: Point
   } & Pick<LabelOffsetPatch, 'nameLabelOffset'>
@@ -345,18 +354,50 @@ export function updateStair(
         else if (typeof patch.steps === 'number' && Number.isFinite(patch.steps)) {
           updated.steps = Math.min(STAIR_MAX_STEPS, Math.max(STAIR_MIN_STEPS, Math.round(patch.steps)))
         }
-        if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
+        if (patch.steps2 === null) delete updated.steps2
+        else if (typeof patch.steps2 === 'number' && Number.isFinite(patch.steps2)) {
+          updated.steps2 = Math.min(STAIR_MAX_STEPS, Math.max(STAIR_MIN_STEPS, Math.round(patch.steps2)))
+        }
+        if (patch.corner === 'landing') updated.corner = 'landing'
+        else if (patch.corner === 'winder') delete updated.corner
+        const lShape = isLShapeLayout(updated.layout)
+        const reshaped =
+          patch.layout !== undefined ||
+          patch.orientation !== undefined ||
+          typeof patch.widthMm === 'number' ||
+          typeof patch.lengthMm === 'number' ||
+          typeof patch.turnLengthMm === 'number'
+        if (lShape) {
+          // L字・2方向に段は、外接する長方形の中に L 字を作る。幅は段の幅（長方形の幅ではない）
+          if (typeof patch.widthMm === 'number' && patch.widthMm > 0) updated.widthMm = Math.round(patch.widthMm)
+          if (typeof patch.lengthMm === 'number' && patch.lengthMm > 0) updated = withStairLength(updated, patch.lengthMm)
+          const width = mmToSvgUnits(updated.widthMm ?? STAIR_DEFAULT_WIDTH_MM)
+          const g = lStairGeometry(updated, getStairBounds(updated.polygon), false)
+          // ほかの形から変えたときは、曲がったあとに段が入るよう、曲がる向きへ段 2つ分以上の長さを取る
+          const turnLength =
+            typeof patch.turnLengthMm === 'number' && patch.turnLengthMm > 0
+              ? mmToSvgUnits(patch.turnLengthMm)
+              : patch.layout !== undefined && !isLShapeLayout(stair.layout) && g.W < width * 1.6
+                ? width * 2
+                : null
+          if (turnLength != null) {
+            // 上り始めの角（s = 0, t = 0）は動かさず、曲がる向きにだけ伸び縮みさせる
+            updated = { ...updated, polygon: stairRect([g.at(0, 0), g.at(g.L, turnLength)]) }
+          }
+        } else if (typeof patch.widthMm === 'number' && patch.widthMm > 0) {
           updated = withStairWidth(updated, patch.widthMm)
         } else if (patch.layout !== undefined || patch.orientation !== undefined || patch.orientation === null) {
-          updated = withStairWidth(updated, updated.widthMm ?? STAIR_DEFAULT_WIDTH_MM)
+          // L字・2方向に段から戻したときも、長方形の幅を階段の幅に合わせ直す
+          updated = withStairWidth({ ...updated, polygon: stairRect(updated.polygon) }, updated.widthMm ?? STAIR_DEFAULT_WIDTH_MM)
         }
-        if (typeof patch.lengthMm === 'number' && patch.lengthMm > 0) {
+        if (!lShape && typeof patch.lengthMm === 'number' && patch.lengthMm > 0) {
           updated = withStairLength(updated, patch.lengthMm)
         }
         // 平行移動は moveStair / setStairPolygon 側で開口追従と壁同期する
         updated = applyLabelOffsetPatch(updated, patch)
-        // 輪郭は長方形にそろえる（ゆがんでいると三角形に切り抜かれて表示される）
-        updated = { ...updated, polygon: stairRect(updated.polygon) }
+        // 輪郭は長方形（L字・2方向に段は L 字）にそろえる（ゆがんでいると三角形に切り抜かれて表示される）。
+        // 形・向き・大きさを変えたときは、L 字の幅を階段の幅から決め直す
+        updated = { ...updated, polygon: stairOutline(updated, !reshaped) }
         return updated
       }),
     }
@@ -769,6 +810,46 @@ export function setStairPolygon(
   })
 }
 
+/**
+ * 階段の辺をドラッグして大きさを変える。start はドラッグを始めたときの輪郭（毎回そこから計算するので、
+ * 途中で輪郭の点の並びが変わっても掴んだ辺がずれない）。
+ * 幅（L字・2方向に段は1本目の段の幅）は、変えたあとの形から求め直す。
+ */
+export function resizeStairEdge(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; stairId: string },
+  start: Point[],
+  edgeIndex: number,
+  value: number
+): FloorPlan {
+  const found = findStair(floorPlan, ref)
+  if (!found) return floorPlan
+  // 動かした辺だけを 5mm 刻みにする（部屋の移動のように全部の点を 50mm 刻みにそろえると、
+  // 910mm の階段の反対側の辺まで数 cm 動いてしまう）
+  const polygon = moveStairEdge(start, edgeIndex, Math.round(value * 2) / 2)
+  const resized: Stair = { ...found.stair, polygon }
+  const bounds = getStairBounds(polygon)
+  let widthUnits: number
+  if (isLShapeLayout(resized.layout)) {
+    widthUnits = lStairGeometry(resized, bounds).w1
+  } else {
+    const axis = getStairWidthAxis(resolveStairOrientation(resized, bounds))
+    widthUnits = axis === 'x' ? bounds.maxX - bounds.minX : bounds.maxY - bounds.minY
+  }
+  const stair: Stair = { ...resized, widthMm: Math.round(svgUnitsToMm(widthUnits)) }
+  return {
+    ...floorPlan,
+    floors: floorPlan.floors.map((floor, fi) =>
+      fi !== found.floorIndex
+        ? floor
+        : syncFloorWalls({
+            ...floor,
+            stairs: floor.stairs.map((s, si) => (si === found.stairIndex ? { ...stair, polygon: stairOutline(stair) } : s)),
+          })
+    ),
+  }
+}
+
 type SpaceMoveTarget = {
   kind: 'room' | 'stair'
   index: number
@@ -1149,7 +1230,8 @@ export function listAllEditableElements(
     floor.windows.map((win, i) => ({
       key: `window:${floor.id}:${win.id}`,
       ref: { kind: 'window' as const, floorId: floor.id, windowId: win.id },
-      label: `${floor.label} / ${windowKindLabel(win.kind)} ${i + 1}`,
+      // 窓の種類名は「引き違い戸」など扉と同じ名前があるので、窓だと分かるように付ける
+      label: `${floor.label} / 窓（${windowKindLabel(win.kind)}）${i + 1}`,
     }))
   )
   const fixtures = floorPlan.floors.flatMap((floor) =>
