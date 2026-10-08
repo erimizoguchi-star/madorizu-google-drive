@@ -6,6 +6,8 @@ import { findPlanIssues, type PlanIssue } from '../utils/planChecks'
 interface PlanChecksPanelProps {
   floorPlan: FloorPlan
   onSelect: (ref: SelectedElementRef) => void
+  /** 数 cm ずれた壁をまとめて1本にそろえる */
+  onAlignWalls?: () => void
 }
 
 const ICONS: Record<PlanIssue['kind'], string> = {
@@ -15,11 +17,13 @@ const ICONS: Record<PlanIssue['kind'], string> = {
   'area-mismatch': '📐',
   'wall-duplicate': '▤',
   'wall-stray': '│',
+  'wall-misaligned': '═',
 }
 
 /** 確認が必要なところの一覧。押すとその要素を選ぶ（その場メニューが出る） */
-export function PlanChecksPanel({ floorPlan, onSelect }: PlanChecksPanelProps) {
+export function PlanChecksPanel({ floorPlan, onSelect, onAlignWalls }: PlanChecksPanelProps) {
   const issues = useMemo(() => findPlanIssues(floorPlan), [floorPlan])
+  const misaligned = issues.filter((issue) => issue.kind === 'wall-misaligned').length
   return (
     <details className="plan-checks" open={issues.length > 0}>
       <summary>
@@ -28,6 +32,16 @@ export function PlanChecksPanel({ floorPlan, onSelect }: PlanChecksPanelProps) {
       </summary>
       {issues.length > 0 && (
         <>
+          {misaligned > 0 && onAlignWalls && (
+            <button
+              type="button"
+              className="btn btn-primary plan-checks__align"
+              onClick={onAlignWalls}
+              title="数 cm ずれて2重（太く）に見える壁や外壁の段差を、ほかの部屋もそろっている線に合わせて1本にします"
+            >
+              ═ ずれた壁をまとめてそろえる（{misaligned}か所）
+            </button>
+          )}
           <ul className="plan-checks__list">
             {issues.map((issue, i) => (
               <li key={i}>

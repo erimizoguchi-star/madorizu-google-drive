@@ -10,16 +10,6 @@ function roundCoord(n: number): number {
   return Math.round(n * 1000) / 1000
 }
 
-function pointKey(x: number, y: number): string {
-  return `${roundCoord(x)},${roundCoord(y)}`
-}
-
-function segmentKey(seg: Segment): string {
-  const a = pointKey(seg.x1, seg.y1)
-  const b = pointKey(seg.x2, seg.y2)
-  return a < b ? `${a}|${b}` : `${b}|${a}`
-}
-
 function polygonToEdges(polygon: Point[]): Segment[] {
   const edges: Segment[] = []
   for (let i = 0; i < polygon.length; i++) {
@@ -108,10 +98,9 @@ function mergeCollinearSegments(segments: Segment[]): Segment[] {
   return result
 }
 
-/** 部屋・階段のポリゴンから、外周（1回だけ現れる辺）を抽出する */
+/** 部屋・階段のポリゴンから、外周（1つの部屋・階段にしか接していない部分）を抽出する */
 function collectExteriorBoundarySegments(rooms: Room[], stairs: Stair[]): Segment[] {
-  const edgeCount = countPolygonEdges(rooms, stairs)
-  return [...edgeCount.values()]
+  return collectEdgePieces(rooms, stairs)
     .filter((entry) => entry.count === 1)
     .map((entry) => entry.seg)
 }
@@ -171,27 +160,64 @@ function segmentToInteriorWall(seg: Segment, id: string): Wall {
 
 type EdgeEntry = { seg: Segment; count: number; owners: string[] }
 
-function countPolygonEdges(rooms: Room[], stairs: Stair[]): Map<string, EdgeEntry> {
-  const edgeCount = new Map<string, EdgeEntry>()
+/**
+ * 部屋・階段の辺を、同じ線上で「どの部屋・階段に接しているか」が変わる点で区切って数える。
+ *
+ * 辺をそのまま（端点の組で）数えると、LD の1辺に洋室と洗面所の2部屋が接しているような、
+ * 端がそろわない境目は「1つの部屋にしか接していない辺」＝外壁とみなされ、部屋と部屋の間に太い外壁が描かれていた。
+ * 線ごとに区切りを集めて小さな区間に分け、区間ごとに接している部屋・階段を数える。
+ * 同じ組の部屋に接する区間が続くときは1本にまとめる（部屋の境目ごとに内壁1本）。
+ */
+function collectEdgePieces(rooms: Room[], stairs: Stair[]): EdgeEntry[] {
   const shapes = [
     ...rooms.map((r) => ({ id: r.id, polygon: r.polygon })),
     ...stairs.map((s) => ({ id: s.id, polygon: s.polygon })),
   ]
-
+  const lines = new Map<string, { horizontal: boolean; fixed: number; spans: Array<{ start: number; end: number; owner: string }> }>()
   for (const shape of shapes) {
     for (const edge of polygonToEdges(shape.polygon)) {
-      const key = segmentKey(edge)
-      const entry = edgeCount.get(key)
-      if (entry) {
-        entry.count += 1
-        entry.owners.push(shape.id)
-      } else {
-        edgeCount.set(key, { seg: edge, count: 1, owners: [shape.id] })
-      }
+      const o = toOrthoSeg(edge)
+      if (!o) continue
+      const key = `${o.horizontal ? 'h' : 'v'}:${o.fixed}`
+      const line = lines.get(key) ?? { horizontal: o.horizontal, fixed: o.fixed, spans: [] }
+      line.spans.push({ start: o.start, end: o.end, owner: shape.id })
+      lines.set(key, line)
     }
   }
 
-  return edgeCount
+  const pieces: EdgeEntry[] = []
+  for (const line of lines.values()) {
+    const cuts = [...new Set(line.spans.flatMap((sp) => [sp.start, sp.end]))].sort((a, b) => a - b)
+    let current: { start: number; end: number; owners: string[] } | null = null
+    const flush = () => {
+      if (!current) return
+      const seg = line.horizontal
+        ? { x1: current.start, y1: line.fixed, x2: current.end, y2: line.fixed }
+        : { x1: line.fixed, y1: current.start, x2: line.fixed, y2: current.end }
+      pieces.push({ seg, count: current.owners.length, owners: current.owners })
+      current = null
+    }
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const a = cuts[i]
+      const b = cuts[i + 1]
+      if (b - a < EPS) continue
+      const owners = [
+        ...new Set(line.spans.filter((sp) => sp.start <= a + EPS && sp.end >= b - EPS).map((sp) => sp.owner)),
+      ].sort()
+      if (owners.length === 0) {
+        flush()
+        continue
+      }
+      if (current && Math.abs(current.end - a) < EPS && current.owners.join('|') === owners.join('|')) {
+        current.end = b
+      } else {
+        flush()
+        current = { start: a, end: b, owners }
+      }
+    }
+    flush()
+  }
+  return pieces
 }
 
 /** 内壁を「接する2部屋の組」で表すキー（並び順に依存しない） */
@@ -200,12 +226,12 @@ export function wallPairKey(owners: string[]): string {
 }
 
 /**
- * 部屋・階段の共有辺ごとに内壁を1本ずつ生成する（部屋をまたぐ長い線は結合しない）。
+ * 部屋・階段の境目ごとに内壁を1本ずつ生成する（部屋をまたぐ長い線は結合しない）。
+ * 2つ以上の部屋・階段に接している区間が内壁（3つ以上は部屋が重なっているとき）。
  */
 function collectInteriorWallEntries(rooms: Room[], stairs: Stair[]): EdgeEntry[] {
-  const edgeCount = countPolygonEdges(rooms, stairs)
-  return [...edgeCount.values()]
-    .filter((entry) => entry.count === 2)
+  return collectEdgePieces(rooms, stairs)
+    .filter((entry) => entry.count >= 2)
     .filter((entry) => segmentLength(entry.seg) >= MIN_SEGMENT)
 }
 

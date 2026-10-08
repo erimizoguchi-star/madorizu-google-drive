@@ -3,6 +3,7 @@ import { ExportButton } from './components/ExportButton'
 import { FloorsPanel } from './components/FloorsPanel'
 import { FloorArrangePanel } from './components/FloorArrangePanel'
 import { PlanChecksPanel } from './components/PlanChecksPanel'
+import { alignPlanWalls } from './utils/alignWalls'
 import { JsonDataButtons } from './components/JsonDataButtons'
 import { RoomEditor } from './components/RoomEditor'
 import { SelectionToolbar } from './components/SelectionToolbar'
@@ -596,7 +597,13 @@ function App() {
 
           {floorPlan && (
             <div className="sidebar-tab-panel" hidden={sidebarTab !== 'edit'}>
-              {sidebarTab === 'edit' && <PlanChecksPanel floorPlan={floorPlan} onSelect={handleSelect} />}
+              {sidebarTab === 'edit' && (
+                <PlanChecksPanel
+                  floorPlan={floorPlan}
+                  onSelect={handleSelect}
+                  onAlignWalls={() => commit((plan) => alignPlanWalls(plan))}
+                />
+              )}
               {sidebarTab === 'edit' && (
                   <RoomEditor
                     floorPlan={floorPlan}

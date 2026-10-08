@@ -24,6 +24,11 @@ import { SelectionToolbarAnchor } from './SelectionToolbarAnchor'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
 import { clientToSvg, canvasToFloor, isSvgDragging, subscribeSvgDrag } from './svgCoords'
+import { useZoom } from '../components/zoomContext'
+import { EDGE_SNAP_MAX, otherEdgeValues, snapPolygonToEdges, snapToNearest } from '../utils/alignWalls'
+
+/** 部屋の辺がほかの部屋の辺へ吸い付く距離（画面上の px） */
+const EDGE_SNAP_PX = 8
 
 interface FloorCanvasProps {
   floor: Floor
@@ -128,6 +133,11 @@ export function FloorCanvas({
   const offsetY = -bounds.minY + padding
 
   const transform = (x: number, y: number) => ({ x: x + offsetX, y: y + offsetY })
+
+  // 部屋の辺を動かすとき、ほかの部屋の辺の近くでは吸い付かせる。
+  // 数 cm のすき間・重なりができると、両方の部屋の辺に壁ができて2重（太い壁）に見えるため
+  const zoom = useZoom()
+  const edgeSnap = Math.min(EDGE_SNAP_MAX, EDGE_SNAP_PX / zoom)
 
   const selectedRoom =
     selectedRoomId != null ? floor.rooms.find((r) => r.id === selectedRoomId) : undefined
@@ -279,7 +289,8 @@ export function FloorCanvas({
                 onSelect={onRoomSelect}
                 onMove={
                   onRoomMove && editable
-                    ? (roomId, polygonFloor) => onRoomMove(roomId, polygonFloor)
+                    ? (roomId, polygonFloor) =>
+                        onRoomMove(roomId, snapPolygonToEdges(polygonFloor, floor, roomId, edgeSnap))
                     : undefined
                 }
               />
@@ -430,7 +441,11 @@ export function FloorCanvas({
               <RoomResizeHandles
                 rect={selectedRoomRectCanvas}
                 floorOffset={floorOffset}
-                onResize={(edge, positionFloorSvg) => onRoomResize(selectedRoomId, edge, positionFloorSvg)}
+                onResize={(edge, positionFloorSvg) => {
+                  const axis = edge === 'east' || edge === 'west' ? 'x' : 'y'
+                  const others = otherEdgeValues(floor, axis, selectedRoomId)
+                  onRoomResize(selectedRoomId, edge, snapToNearest(positionFloorSvg, others, edgeSnap))
+                }}
               />
             </g>
           )}
