@@ -2,7 +2,7 @@ import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } fro
 import type { Fixture, Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
-import { CANVAS } from './styles'
+import { CANVAS, polygonArea } from './styles'
 import { DoorRenderer } from './DoorRenderer'
 import { doorPaintExtentPoints } from './doorPaintBounds'
 import { FLOOR_CANVAS_PADDING, getFloorBounds } from './floorCanvasGeometry'
@@ -279,7 +279,11 @@ export function FloorCanvas({
             fill={CANVAS.background}
           />
           <g className="rooms-layer">
-            {transformedFloor.rooms.map((room) => (
+            {/* 大きい部屋から描き、小さい部屋を上にする。部屋の形が重なっていても、
+                小さい部屋（洗面室など）の色・模様が大きい部屋（LD など）に隠れないように */}
+            {[...transformedFloor.rooms]
+              .sort((a, b) => polygonArea(b.polygon) - polygonArea(a.polygon))
+              .map((room) => (
               <RoomRenderer
                 key={room.id}
                 room={room}

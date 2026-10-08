@@ -4,6 +4,7 @@ import { FloorsPanel } from './components/FloorsPanel'
 import { FloorArrangePanel } from './components/FloorArrangePanel'
 import { PlanChecksPanel } from './components/PlanChecksPanel'
 import { alignPlanWalls } from './utils/alignWalls'
+import { cutRoomOverlaps } from './utils/roomOverlap'
 import { JsonDataButtons } from './components/JsonDataButtons'
 import { RoomEditor } from './components/RoomEditor'
 import { SelectionToolbar } from './components/SelectionToolbar'
@@ -666,6 +667,11 @@ function App() {
                   floorPlan={floorPlan}
                   onSelect={handleSelect}
                   onAlignWalls={() => commit((plan) => alignPlanWalls(plan))}
+                  onCutOverlaps={() => {
+                    const result = cutRoomOverlaps(floorPlan)
+                    if (result.cut > 0) commit(result.plan)
+                    return result
+                  }}
                 />
               )}
               {sidebarTab === 'edit' && (
