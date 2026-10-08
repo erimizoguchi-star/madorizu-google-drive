@@ -142,12 +142,14 @@ export async function sendImageToPropertySystem(
       error?: string
       propertyName?: string
       slot?: string
+      /** 編集データを保存したか（受け口が古いと付かない） */
+      dataSaved?: boolean
     } | null
     if (response.ok && data?.ok) {
       return {
         ok: true,
         message: `「${data.propertyName ?? '物件'}」の「${data.slot ?? '間取り図'}」の枠へ送りました。広告シートに戻ると表示されます。${
-          editData ? '編集データも保存したので、あとで別のPCからでも続きを編集できます。' : ''
+          data.dataSaved ? '編集データも保存したので、あとで別のPCからでも続きを編集できます。' : ''
         }`,
       }
     }
