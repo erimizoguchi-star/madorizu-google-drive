@@ -1230,7 +1230,8 @@ export function listAllEditableElements(
     floor.windows.map((win, i) => ({
       key: `window:${floor.id}:${win.id}`,
       ref: { kind: 'window' as const, floorId: floor.id, windowId: win.id },
-      label: `${floor.label} / ${windowKindLabel(win.kind)} ${i + 1}`,
+      // 窓の種類名は「引き違い戸」など扉と同じ名前があるので、窓だと分かるように付ける
+      label: `${floor.label} / 窓（${windowKindLabel(win.kind)}）${i + 1}`,
     }))
   )
   const fixtures = floorPlan.floors.flatMap((floor) =>

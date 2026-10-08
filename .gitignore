@@ -26,3 +26,7 @@ tsconfig.tsbuildinfo
 
 .env
 .env.local
+
+# Playwright（画面を操作するテスト）の結果
+test-results/
+playwright-report/

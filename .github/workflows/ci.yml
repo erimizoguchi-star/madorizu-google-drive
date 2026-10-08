@@ -4,7 +4,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feature-update]
+    branches: [main, feature-update, "feature/**"]
   pull_request:
 
 jobs:
@@ -29,3 +29,20 @@ jobs:
 
       - name: 型チェック + ビルド
         run: npm run build
+
+      # 画面を実際に操作して確かめる（扉・窓の選択、階段の取っ手、出力、続きから編集など）
+      - name: 画面操作テスト用のブラウザ
+        run: npx playwright install --with-deps chromium
+
+      - name: 画面操作テスト
+        run: npm run test:e2e
+
+      - name: 画面操作テストの結果（失敗したときだけ）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

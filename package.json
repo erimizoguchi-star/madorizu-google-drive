@@ -10,7 +10,8 @@
     "test-api-key": "node scripts/test-api-key.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src"
+    "test:e2e": "playwright test",
+    "lint": "eslint src e2e playwright.config.ts vitest.config.ts"
   },
   "dependencies": {
     "jspdf": "^4.2.1",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
