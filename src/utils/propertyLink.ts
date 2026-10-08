@@ -1,3 +1,5 @@
+import type { FloorPlan } from '../types/floorPlan'
+
 // 物件情報管理システム（広告シートの「間取り図を作る」）から開かれたときに URL で渡される物件情報。
 //   ?property=物件ID&name=表示名&upload=送り先
 // upload は、仕上がった画像を広告シートの「間取り図」の枠へ直接送るための送り先（期限つきの受付票を含む）。
@@ -42,6 +44,8 @@ export interface PropertySource {
   /** どこにある資料か（例: 資料シートの建物図面） */
   label: string
   kind: 'image' | 'pdf'
+  /** この間取り図ツールから送った画像で、編集データが付いている（続きから編集できる） */
+  editData?: boolean
 }
 
 /** この物件の図面の一覧を取得する。取得できなければ空 */
@@ -79,14 +83,58 @@ export function removeUploadFromAddressBar() {
   window.history.replaceState(null, '', url)
 }
 
-/** 仕上がった画像を物件情報管理システムへ送る。成功・失敗を、画面に出せる文で返す */
+/** 物件へ画像と一緒に送る編集データの形。別の PC で開き直したときに、そのまま編集を続けられる */
+interface EditData {
+  format: 'madorizu-edit'
+  version: 1
+  savedAt: string
+  floorPlan: FloorPlan
+}
+
+export function buildEditData(floorPlan: FloorPlan): Blob {
+  const data: EditData = { format: 'madorizu-edit', version: 1, savedAt: new Date().toISOString(), floorPlan }
+  return new Blob([JSON.stringify(data)], { type: 'application/json' })
+}
+
+/** 物件から受け取った編集データを間取図に戻す。形が違う・階がないものは null */
+export function parseEditData(json: unknown): FloorPlan | null {
+  if (!json || typeof json !== 'object') return null
+  const data = json as Partial<EditData>
+  if (data.format !== 'madorizu-edit' || !data.floorPlan) return null
+  const floors = (data.floorPlan as Partial<FloorPlan>).floors
+  if (!Array.isArray(floors) || floors.length === 0) return null
+  return data.floorPlan
+}
+
+/** 物件の間取り図の枠にある画像に付いた編集データを読み込む */
+export async function fetchPropertyEditData(uploadUrl: string, source: PropertySource): Promise<FloorPlan> {
+  const url = new URL(uploadUrl)
+  url.searchParams.set('file', source.id)
+  url.searchParams.set('data', '1')
+  const response = await fetch(url)
+  const json = (await response.json().catch(() => null)) as unknown
+  if (!response.ok) {
+    const error = (json as { error?: string } | null)?.error
+    throw new Error(error ?? `編集データを読み込めませんでした（${response.status}）`)
+  }
+  const plan = parseEditData(json)
+  if (!plan) throw new Error('編集データの形が正しくありません')
+  return plan
+}
+
+/**
+ * 仕上がった画像を物件情報管理システムへ送る。成功・失敗を、画面に出せる文で返す。
+ * editData を付けると、編集データも一緒に保存され、別の PC からでも続きを編集できる
+ */
 export async function sendImageToPropertySystem(
   uploadUrl: string,
   image: Blob,
-  fileName: string
+  fileName: string,
+  editData?: Blob
 ): Promise<{ ok: boolean; message: string }> {
   const form = new FormData()
   form.append('file', new File([image], fileName, { type: image.type || 'image/jpeg' }))
+  if (editData) form.append('data', new File([editData], fileName.replace(/\.[^.]+$/, '') + '.json', { type: 'application/json' }))
   try {
     const response = await fetch(uploadUrl, { method: 'POST', body: form })
     const data = (await response.json().catch(() => null)) as {
@@ -94,11 +142,15 @@ export async function sendImageToPropertySystem(
       error?: string
       propertyName?: string
       slot?: string
+      /** 編集データを保存したか（受け口が古いと付かない） */
+      dataSaved?: boolean
     } | null
     if (response.ok && data?.ok) {
       return {
         ok: true,
-        message: `「${data.propertyName ?? '物件'}」の「${data.slot ?? '間取り図'}」の枠へ送りました。広告シートに戻ると表示されます。`,
+        message: `「${data.propertyName ?? '物件'}」の「${data.slot ?? '間取り図'}」の枠へ送りました。広告シートに戻ると表示されます。${
+          data.dataSaved ? '編集データも保存したので、あとで別のPCからでも続きを編集できます。' : ''
+        }`,
       }
     }
     return { ok: false, message: data?.error ?? `送信に失敗しました（${response.status}）。` }

@@ -20,7 +20,12 @@ interface ExportButtonProps {
    * 物件情報管理システムから開かれたときの送り先。指定があると「物件情報管理システムへ送る」ボタンを出す。
    * 送ると、その物件の広告シート（間取り図の枠）に直接入る。
    */
-  sendTo?: { uploadUrl: string; propertyName: string }
+  sendTo?: {
+    uploadUrl: string
+    propertyName: string
+    /** 画像と一緒に送る編集データ（あとで続きから編集できるように） */
+    editData?: () => Blob
+  }
 }
 
 /** React の再描画（選択解除の反映）を待ってから出力する */
@@ -49,7 +54,7 @@ export function ExportButton({ targetId, filename = 'madorizu', onBeforeExport, 
       setSendState({ busy: false, ok: false, message: '間取図の画像を作れませんでした。' })
       return
     }
-    const result = await sendImageToPropertySystem(sendTo.uploadUrl, blob, `${filename}.jpg`)
+    const result = await sendImageToPropertySystem(sendTo.uploadUrl, blob, `${filename}.jpg`, sendTo.editData?.())
     setSendState({ busy: false, ...result })
   }
 

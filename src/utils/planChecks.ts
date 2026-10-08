@@ -4,13 +4,21 @@ import { mm2ToJo, polygonArea } from '../renderer/styles'
 import { doorCenter, findNearestSnapTarget } from './floorPlanAdd'
 import type { SelectedElementRef } from './floorPlanEdit'
 import { mmToSvgUnits, svgUnitsToMm } from './roomGeometry'
+import { findWallMisalignments } from './alignWalls'
 
 /**
  * AI の解析結果や編集の途中でよく起きる間違いを探す。
  * 一覧から押すとその要素を選べるので、全体を見回して間違いを探す時間を減らせる。
  */
 export interface PlanIssue {
-  kind: 'door-off-wall' | 'window-off-wall' | 'room-overlap' | 'area-mismatch' | 'wall-duplicate' | 'wall-stray'
+  kind:
+    | 'door-off-wall'
+    | 'window-off-wall'
+    | 'room-overlap'
+    | 'area-mismatch'
+    | 'wall-duplicate'
+    | 'wall-stray'
+    | 'wall-misaligned'
   ref: SelectedElementRef
   message: string
 }
@@ -124,6 +132,26 @@ function floorIssues(floor: Floor): PlanIssue[] {
         })
       }
     }
+  }
+
+  // 数 cm ずれて2重（太く）に見える壁、外壁の小さな段差。「まとめてそろえる」で1本にできる
+  const shapeById = new Map(shapes.map((s) => [s.ref.kind === 'room' ? s.ref.roomId : s.ref.stairId, s]))
+  for (const m of findWallMisalignments(floor)) {
+    const first = shapeById.get(m.shapeIds[0])
+    const second = shapeById.get(m.shapeIds[1])
+    if (!first || !second) continue
+    const mm = Math.round(svgUnitsToMm(m.distance))
+    const pair = `${label(first.name)}と「${second.name}」`
+    issues.push({
+      kind: 'wall-misaligned',
+      ref: first.ref,
+      message:
+        m.kind === 'gap'
+          ? `${pair}の間に ${mm}mm のすき間があり、壁が2重です`
+          : m.kind === 'overlap'
+            ? `${pair}が ${mm}mm 重なり、壁が2重です`
+            : `${pair}の壁に ${mm}mm の段差があります`,
+    })
   }
 
   // 同じ線上で重なっている壁（手で直した壁と自動の壁が重なって「壁が増えた」状態など）
