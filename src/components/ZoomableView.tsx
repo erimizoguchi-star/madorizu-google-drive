@@ -207,6 +207,9 @@ export function ZoomableView({
     })
   }, [])
 
+  // 枠いっぱいに合わせるのは、最初・画像を読み込んだとき（別の図面に替わったときも load が来る）・枠の大きさが変わったときだけ。
+  // 以前は children を見ていたため、画面が描き直されるたび（編集時間の表示は1秒ごと）に合わせ直し、
+  // 拡大・移動してもすぐ元に戻っていた
   useEffect(() => {
     if (!fitToView) return
 
@@ -214,7 +217,11 @@ export function ZoomableView({
     const stage = stageRef.current
     if (!viewport || !stage) return
 
-    const scheduleFit = () => requestAnimationFrame(() => fitContentToViewport())
+    let raf = 0
+    const scheduleFit = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => fitContentToViewport())
+    }
 
     const observer = new ResizeObserver(scheduleFit)
     observer.observe(viewport)
@@ -222,17 +229,18 @@ export function ZoomableView({
 
     const img = stage.querySelector('img')
     if (img) {
+      img.addEventListener('load', scheduleFit)
       if (img.complete) scheduleFit()
-      else img.addEventListener('load', scheduleFit)
     } else {
       scheduleFit()
     }
 
     return () => {
+      cancelAnimationFrame(raf)
       observer.disconnect()
       img?.removeEventListener('load', scheduleFit)
     }
-  }, [fitToView, fitContentToViewport, children])
+  }, [fitToView, fitContentToViewport])
 
   useEffect(() => {
     if (!fitOnKey) return

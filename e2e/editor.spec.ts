@@ -10,12 +10,14 @@ import { expect, test, type Page } from '@playwright/test'
  */
 
 const BLANK_PNG = new URL('./fixtures/blank.png', import.meta.url).pathname
+/** 平面図らしい大きさ（600×400）の画像。拡大・移動を確かめるときに使う */
+const PLAN_PNG = new URL('./fixtures/plan.png', import.meta.url).pathname
 
 /** サンプルの間取図を開いて、編集タブにする */
-async function openSample(page: Page) {
+async function openSample(page: Page, image = BLANK_PNG) {
   await page.goto('/')
   await page.getByLabel('サンプル表示（解析なし）').check()
-  await page.locator('.upload-panel input[type=file]').setInputFiles(BLANK_PNG)
+  await page.locator('.upload-panel input[type=file]').setInputFiles(image)
   await page.getByRole('button', { name: 'サンプル間取図を表示' }).click()
   await expect(page.locator('svg.floor-canvas')).toHaveCount(2)
   await expect(page.getByRole('tab', { name: /② 編集/ })).toHaveAttribute('aria-selected', 'true')
@@ -151,6 +153,27 @@ test.describe('間取図の編集', () => {
     for (const editOnly of ['door-hit', 'window-hit-line', 'resize-handles-layer', 'grid-lines-layer']) {
       expect(svg).not.toContain(editOnly)
     }
+  })
+
+  test('アップロードした平面図は、拡大・移動しても元に戻らない', async ({ page }) => {
+    await openSample(page, PLAN_PNG)
+    const preview = page.locator('.source-preview-zoom')
+    await preview.scrollIntoViewIfNeeded()
+    const stage = preview.locator('.zoom-stage')
+    const transform = () => stage.evaluate((el) => (el as HTMLElement).style.transform)
+    // 画面の配置が落ち着くまで待つ（枠の大きさが変わったときに枠に合わせ直すのは正しい動き）
+    await page.waitForTimeout(1500)
+    const fitted = await transform()
+
+    const box = (await preview.locator('.zoom-viewport').boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -300)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 5 })
+    await page.mouse.up()
+    // 拡大・移動したまま、画面の描き直し（編集時間の表示は1秒ごと）で枠に合わせた位置へ戻らない
+    await page.waitForTimeout(2500)
+    expect(await transform()).not.toBe(fitted)
   })
 
   test('再読み込みしても「続きから編集」で戻せる', async ({ page }) => {
