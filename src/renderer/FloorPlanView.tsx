@@ -56,6 +56,8 @@ interface FloorPlanViewProps {
   onWindowMove?: (ref: SelectedElementRef & { kind: 'window' }, start: Point, end: Point) => void
   onFixtureMove?: (ref: SelectedElementRef & { kind: 'fixture' }, position: Point) => void
   onStairMove?: (ref: SelectedElementRef & { kind: 'stair' }, polygon: Point[]) => void
+  /** 階段の辺をドラッグして大きさを変える（value は動かした先、start はドラッグ開始時の輪郭） */
+  onStairResize?: (ref: SelectedElementRef & { kind: 'stair' }, edgeIndex: number, value: number, start: Point[]) => void
   onTextMove?: (ref: SelectedElementRef & { kind: 'text' }, position: Point) => void
   onFixtureResize?: (
     ref: SelectedElementRef & { kind: 'fixture' },
@@ -203,6 +205,7 @@ export function FloorPlanView({
   onFixtureMove,
   onFixtureResize,
   onStairMove,
+  onStairResize,
   onTextMove,
   onPlaceClick,
 }: FloorPlanViewProps) {
@@ -510,7 +513,7 @@ export function FloorPlanView({
       ) : (
         onSelect && (
           <p className="edit-mode-hint">
-            部屋・壁・扉・窓・設備・階段をクリックして選択。部屋と階段はドラッグで移動、部屋は辺ハンドル・設備は四隅でサイズ変更。
+            部屋・壁・扉・窓・設備・階段をクリックして選択。部屋と階段はドラッグで移動、部屋と階段は辺ハンドル・設備は四隅でサイズ変更。
             選択して Delete キーで削除。追加は左パネルから。小さい要素は左の「要素を選択」から選ぶと確実です。
           </p>
         )
@@ -639,6 +642,12 @@ export function FloorPlanView({
               onStairSelect={
                 !locked && onSelect
                   ? (stairId) => onSelect({ kind: 'stair', floorId: floor.id, stairId })
+                  : undefined
+              }
+              onStairResize={
+                onStairResize && editable && !locked
+                  ? (stairId, edgeIndex, value, start) =>
+                      onStairResize({ kind: 'stair', floorId: floor.id, stairId }, edgeIndex, value, start)
                   : undefined
               }
               onStairMove={

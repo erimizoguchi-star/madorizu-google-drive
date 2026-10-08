@@ -3,19 +3,21 @@ import { doorKindLabel } from '../constants/doorOptions'
 import { windowKindLabel } from '../constants/windowOptions'
 import { defaultFixtureSizeMm, fixtureTypeLabel } from '../constants/fixtureOptions'
 import {
+  getStairWidthAxis,
+  moveStairEdge,
   STAIR_DEFAULT_WIDTH_MM,
   withStairLength,
   withStairWidth,
 } from './resizeStair'
 import { isAreaJoHiddenByType, toJapaneseRoomName } from '../constants/roomTypes'
 import type { LabelLineKind } from '../renderer/roomLabelLayout'
-import { mmToSvgUnits, snapSvgToMmGrid, type RectEdge } from './roomGeometry'
+import { mmToSvgUnits, snapSvgToMmGrid, svgUnitsToMm, type RectEdge } from './roomGeometry'
 import { resizeRoomDimensionsOnFloor, resizeRoomEdgeOnFloor } from './resizeRoom'
 import { findWallPairKey, syncFloorWalls } from './ensureExteriorWalls'
 import { reseatDoorOnWall, snapWindowOntoNearestWall } from './floorPlanAdd'
 import { detectOutwardSide, hasFourWayDirection, hasWindowDirection } from './windowOrientation'
 import { stairOutline, stairRect } from './stairShape'
-import { getStairBounds, isLShapeLayout, lStairGeometry } from '../renderer/stairGraphics'
+import { getStairBounds, isLShapeLayout, lStairGeometry, resolveStairOrientation } from '../renderer/stairGraphics'
 
 export type SelectOptions = {
   /** Ctrl / Cmd クリックで合成用の複数選択 */
@@ -806,6 +808,46 @@ export function setStairPolygon(
     oldPolygon: found.stair.polygon,
     newPolygon: polygon,
   })
+}
+
+/**
+ * 階段の辺をドラッグして大きさを変える。start はドラッグを始めたときの輪郭（毎回そこから計算するので、
+ * 途中で輪郭の点の並びが変わっても掴んだ辺がずれない）。
+ * 幅（L字・2方向に段は1本目の段の幅）は、変えたあとの形から求め直す。
+ */
+export function resizeStairEdge(
+  floorPlan: FloorPlan,
+  ref: { floorId: string; stairId: string },
+  start: Point[],
+  edgeIndex: number,
+  value: number
+): FloorPlan {
+  const found = findStair(floorPlan, ref)
+  if (!found) return floorPlan
+  // 動かした辺だけを 5mm 刻みにする（部屋の移動のように全部の点を 50mm 刻みにそろえると、
+  // 910mm の階段の反対側の辺まで数 cm 動いてしまう）
+  const polygon = moveStairEdge(start, edgeIndex, Math.round(value * 2) / 2)
+  const resized: Stair = { ...found.stair, polygon }
+  const bounds = getStairBounds(polygon)
+  let widthUnits: number
+  if (isLShapeLayout(resized.layout)) {
+    widthUnits = lStairGeometry(resized, bounds).w1
+  } else {
+    const axis = getStairWidthAxis(resolveStairOrientation(resized, bounds))
+    widthUnits = axis === 'x' ? bounds.maxX - bounds.minX : bounds.maxY - bounds.minY
+  }
+  const stair: Stair = { ...resized, widthMm: Math.round(svgUnitsToMm(widthUnits)) }
+  return {
+    ...floorPlan,
+    floors: floorPlan.floors.map((floor, fi) =>
+      fi !== found.floorIndex
+        ? floor
+        : syncFloorWalls({
+            ...floor,
+            stairs: floor.stairs.map((s, si) => (si === found.stairIndex ? { ...stair, polygon: stairOutline(stair) } : s)),
+          })
+    ),
+  }
 }
 
 type SpaceMoveTarget = {

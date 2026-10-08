@@ -49,6 +49,7 @@ import {
   resizeRoomEdge,
   setRoomPolygon,
   setStairPolygon,
+  resizeStairEdge,
   updateLabelOffset,
 } from './utils/floorPlanEdit'
 import {
@@ -1046,6 +1047,9 @@ function App() {
                 }}
                 onStairMove={(ref, polygon) => {
                   commit((plan) => setStairPolygon(plan, ref, polygon), { coalesce: true })
+                }}
+                onStairResize={(ref, edgeIndex, value, start) => {
+                  commit((plan) => resizeStairEdge(plan, ref, start, edgeIndex, value), { coalesce: true })
                 }}
                 onTextMove={(ref, position) => {
                   commit((plan) => moveTextLabel(plan, ref, position), { coalesce: true })

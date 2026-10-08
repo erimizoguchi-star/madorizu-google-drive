@@ -88,6 +88,7 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
             />
             <p className="editor-field-hint">
               {lShape ? '曲がる前の長さ（角を含む）です。' : '上り方向の長さです。上り始め側は動きません。'}
+              図面上で、階段の辺の取っ手をドラッグしても大きさを変えられます。
             </p>
           </div>
 

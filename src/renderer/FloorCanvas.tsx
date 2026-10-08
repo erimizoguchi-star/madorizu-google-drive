@@ -12,6 +12,8 @@ import { RoomLabels } from './RoomLabels'
 import { computeRoomLabelLayout, computeStairLabelLayout } from './roomLabelLayout'
 import { RoomRenderer } from './RoomRenderer'
 import { RoomResizeHandles } from './RoomResizeHandles'
+import { StairResizeHandles } from './StairResizeHandles'
+import { isHorizontalStairEdge } from '../utils/resizeStair'
 import { StairRenderer } from './StairRenderer'
 import { WallRenderer } from './WallRenderer'
 import { WindowRenderer } from './WindowRenderer'
@@ -45,6 +47,7 @@ interface FloorCanvasProps {
   onRoomSelect?: (roomId: string, additive?: boolean) => void
   onStairSelect?: (stairId: string) => void
   onStairMove?: (stairId: string, polygonFloor: Point[]) => void
+  onStairResize?: (stairId: string, edgeIndex: number, value: number, start: Point[]) => void
   onWallSelect?: (wallId: string) => void
   onDoorSelect?: (doorId: string) => void
   onWindowSelect?: (windowId: string) => void
@@ -92,6 +95,7 @@ export function FloorCanvas({
   onRoomSelect,
   onStairSelect,
   onStairMove,
+  onStairResize,
   onWallSelect,
   onDoorSelect,
   onWindowSelect,
@@ -436,6 +440,24 @@ export function FloorCanvas({
               />
             ))}
           </g>
+          {editable && selectedStairId && onStairResize && (() => {
+            const stair = transformedFloor.stairs.find((s) => s.id === selectedStairId)
+            if (!stair || stair.polygon.length < 4) return null
+            return (
+              <g className="resize-handles-layer">
+                <StairResizeHandles
+                  polygon={stair.polygon}
+                  floorOffset={floorOffset}
+                  onResize={(edgeIndex, value, start) => {
+                    // ほかの部屋・階段の辺の近くでは吸い付かせる（部屋の辺と同じ）
+                    const axis = isHorizontalStairEdge(start, edgeIndex) ? 'y' : 'x'
+                    const others = otherEdgeValues(floor, axis, selectedStairId)
+                    onStairResize(selectedStairId, edgeIndex, snapToNearest(value, others, edgeSnap), start)
+                  }}
+                />
+              </g>
+            )
+          })()}
           {selectedRoomRectCanvas && onRoomResize && selectedRoomId && (
             <g className="resize-handles-layer">
               <RoomResizeHandles
