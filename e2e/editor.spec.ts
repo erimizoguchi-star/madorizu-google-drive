@@ -237,3 +237,35 @@ test.describe('間取図の編集', () => {
     await expect(page.getByLabel('幅（mm）')).toHaveValue('2400')
   })
 })
+
+test.describe('使い方', () => {
+  test('初めて開くと案内が出て、使い方を順に読める。一度開くと案内は出なくなる', async ({ page }) => {
+    await page.goto('/')
+    const tip = page.getByRole('note').filter({ hasText: 'はじめて使う方へ' })
+    await expect(tip).toBeVisible()
+    await tip.getByRole('button', { name: '使い方を見る' }).click()
+
+    const dialog = page.getByRole('dialog', { name: '使い方' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('heading', { name: 'はじめに（全体の流れ）' })).toBeVisible()
+    await dialog.getByRole('button', { name: '① 読み込み →' }).click()
+    await expect(dialog.getByRole('heading', { name: '① 読み込み' })).toBeVisible()
+    await dialog.getByRole('button', { name: /元の平面図に合わせる/ }).first().click()
+    await expect(dialog).toContainText('3点で合わせる')
+
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(tip).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByText('はじめて使う方へ')).toHaveCount(0)
+    // 右上のボタンからいつでも開ける
+    await page.getByRole('button', { name: '？ 使い方' }).click()
+    await expect(page.getByRole('dialog', { name: '使い方' })).toBeVisible()
+  })
+
+  test('編集タブの「この画面の使い方」から、その画面の説明が開く', async ({ page }) => {
+    await openSample(page)
+    await page.getByRole('button', { name: /この画面の使い方（平面図に合わせる手順も）/ }).click()
+    await expect(page.getByRole('dialog', { name: '使い方' }).getByRole('heading', { name: '② 編集の基本' })).toBeVisible()
+  })
+})

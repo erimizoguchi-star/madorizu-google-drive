@@ -7,6 +7,7 @@
 }
 
 .app-header {
+  position: relative;
   flex-shrink: 0;
   background: var(--color-header);
   color: var(--color-header-text);
@@ -2487,3 +2488,264 @@
   opacity: 0.7;
 }
 
+/* ===== 使い方 ===== */
+.help-open-btn {
+  position: absolute;
+  top: 0.6rem;
+  right: 1.5rem;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* 初めての人への案内（使い方を一度開くか閉じると出なくなる） */
+.help-first-tip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+  padding: 0.45rem 1.5rem;
+  background: #FFF6E5;
+  border-bottom: 1px solid #E4C79A;
+  font-size: 0.85rem;
+}
+
+.help-first-tip .btn {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.help-first-tip__close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+/* 各タブの先頭の「この画面の使い方」 */
+.help-tab-link {
+  display: block;
+  margin: 0 0 0.6rem auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #0369A1;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.help-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(40, 36, 30, 0.45);
+}
+
+.help-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  height: min(720px, 100%);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface, #fff);
+  color: var(--color-text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.help-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1.2rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.help-dialog__header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.help-dialog__main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.help-dialog__toc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 15rem;
+  flex-shrink: 0;
+  padding: 0.7rem;
+  border-right: 1px solid var(--color-border);
+  background: #FAF7F2;
+  overflow-y: auto;
+}
+
+.help-dialog__toc-item {
+  display: flex;
+  gap: 0.45rem;
+  align-items: baseline;
+  padding: 0.45rem 0.55rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: inherit;
+  cursor: pointer;
+}
+
+.help-dialog__toc-item:hover {
+  background: #F0E8DA;
+}
+
+.help-dialog__toc-item.is-active {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.help-dialog__toc-num {
+  min-width: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.help-dialog__body {
+  flex: 1;
+  padding: 1rem 1.4rem 1.2rem;
+  overflow-y: auto;
+  font-size: 0.92rem;
+  line-height: 1.75;
+}
+
+.help-dialog__body h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+}
+
+.help-dialog__body h4 {
+  margin: 1rem 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.help-dialog__body ul,
+.help-dialog__body ol {
+  margin: 0.3rem 0 0.6rem;
+  padding-left: 1.3rem;
+}
+
+.help-dialog__body li {
+  margin-bottom: 0.35rem;
+}
+
+.help-ui {
+  padding: 0 0.25rem;
+  border-radius: 4px;
+  background: #F2EADF;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.help-note {
+  margin: 0.8rem 0 0;
+  padding: 0.5rem 0.7rem;
+  border-left: 4px solid #E4C79A;
+  background: #FFF9EF;
+  font-size: 0.85rem;
+}
+
+.help-green {
+  color: #2E8B57;
+  font-weight: 600;
+}
+
+.help-blue {
+  color: #0369A1;
+  font-weight: 600;
+}
+
+.help-faq dt {
+  margin-top: 0.8rem;
+  font-weight: 600;
+}
+
+.help-faq dd {
+  margin: 0.2rem 0 0;
+}
+
+.help-keys {
+  border-collapse: collapse;
+}
+
+.help-keys th,
+.help-keys td {
+  padding: 0.35rem 0.8rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.help-keys th {
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+}
+
+.help-dialog__pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 1.4rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--color-border);
+}
+
+/* 共通の .btn は横いっぱいに広がるので、使い方のボタンは中身の幅にする */
+.help-open-btn,
+.help-first-tip .btn,
+.help-dialog__close,
+.help-dialog__pager .btn {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.help-dialog__close {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+/* スマートフォンなど狭い画面では、項目を上に並べる */
+@media (max-width: 720px) {
+  .help-open-btn {
+    position: static;
+    margin-top: 0.4rem;
+  }
+
+  .help-dialog__main {
+    flex-direction: column;
+  }
+
+  .help-dialog__toc {
+    flex-direction: row;
+    width: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+  }
+
+  .help-dialog__toc-item {
+    white-space: nowrap;
+  }
+}

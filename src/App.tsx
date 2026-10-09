@@ -31,6 +31,24 @@ import {
   type EditStats,
 } from './services/editTime'
 import { EditTimePanel } from './components/EditTimePanel'
+import { HelpDialog, type HelpSectionId } from './components/HelpDialog'
+
+/** 「使い方」を見たか（初めての人にだけ案内を出す）。読めない・書けないブラウザでも動くようにする */
+const HELP_SEEN_KEY = 'madorizu-help-seen'
+function loadHelpSeen(): boolean {
+  try {
+    return localStorage.getItem(HELP_SEEN_KEY) === '1'
+  } catch {
+    return true
+  }
+}
+function saveHelpSeen() {
+  try {
+    localStorage.setItem(HELP_SEEN_KEY, '1')
+  } catch {
+    // 保存できなくても使える
+  }
+}
 import {
   autosaveKey,
   clearAutosave,
@@ -197,6 +215,14 @@ function App() {
   const [wallDraftStart, setWallDraftStart] = useState<Point | null>(null)
   /** 「線を合わせる」中。壁の通りをドラッグして元の平面図に合わせる */
   const [aligning, setAligning] = useState(false)
+  /** 「使い方」を開いている項目（閉じているときは null） */
+  const [helpSection, setHelpSection] = useState<HelpSectionId | null>(null)
+  const [helpSeen, setHelpSeen] = useState(loadHelpSeen)
+  const openHelp = (section: HelpSectionId = 'flow') => {
+    setHelpSection(section)
+    setHelpSeen(true)
+    saveHelpSeen()
+  }
   /** 部屋の範囲を四角で描いている（set: 描き直す、add: 足す、cut: 削る） */
   const [rangeDraw, setRangeDraw] = useState<{ floorId: string; roomId: string; mode: RoomRangeMode } | null>(null)
   /** 通りのドラッグを始めたときの間取図。ドラッグ中はこれに当て直す（途中で別の通りと重なっても混ざらない） */
@@ -559,6 +585,9 @@ function App() {
           <h1>間取図ジェネレーター</h1>
           <p className="tagline">平面図から、カラー間取図を自動生成</p>
         </div>
+        <button type="button" className="btn btn-secondary help-open-btn" onClick={() => openHelp()}>
+          ？ 使い方
+        </button>
         {propertyLink && (
           <div className="property-link">
             <span className="property-link__label">物件</span>
@@ -572,6 +601,28 @@ function App() {
           </div>
         )}
       </header>
+      {!helpSeen && (
+        <div className="help-first-tip" role="note">
+          <span>
+            はじめて使う方へ：右上の<strong>「？ 使い方」</strong>で、作り方の手順を見られます。
+          </span>
+          <button type="button" className="btn btn-primary" onClick={() => openHelp()}>
+            使い方を見る
+          </button>
+          <button
+            type="button"
+            className="help-first-tip__close"
+            aria-label="この案内を閉じる"
+            onClick={() => {
+              setHelpSeen(true)
+              saveHelpSeen()
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <HelpDialog open={helpSection != null} section={helpSection ?? 'flow'} onClose={() => setHelpSection(null)} />
 
       <main className="app-main">
         <aside className={`sidebar ${panelHidden ? 'sidebar-collapsed' : ''}`}>
@@ -619,6 +670,9 @@ function App() {
 
           {/* タブを切り替えても読み込み中のファイルなどが消えないよう、中身は隠すだけにする */}
           <div className="sidebar-tab-panel" hidden={!!floorPlan && sidebarTab !== 'load'}>
+            <button type="button" className="help-tab-link" onClick={() => openHelp('load')}>
+              ？ この画面の使い方
+            </button>
             <UploadPanel
               onResult={handleResult}
               canAppend={!!floorPlan}
@@ -674,6 +728,9 @@ function App() {
 
           {floorPlan && (
             <div className="sidebar-tab-panel" hidden={sidebarTab !== 'edit'}>
+              <button type="button" className="help-tab-link" onClick={() => openHelp('edit-basic')}>
+                ？ この画面の使い方（平面図に合わせる手順も）
+              </button>
               {sidebarTab === 'edit' && (
                 <PlanChecksPanel
                   floorPlan={floorPlan}
@@ -733,6 +790,9 @@ function App() {
 
           {floorPlan && (
             <div className="sidebar-tab-panel" hidden={sidebarTab !== 'output'}>
+              <button type="button" className="help-tab-link" onClick={() => openHelp('output')}>
+                ？ この画面の使い方
+              </button>
               <FloorArrangePanel floorPlan={floorPlan} onChange={(updater) => commit(updater)} />
               <ExportButton
                 targetId="madorizu-export"
