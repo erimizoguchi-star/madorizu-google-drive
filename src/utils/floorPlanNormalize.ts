@@ -23,6 +23,7 @@ import { orientWindowsOutward } from './windowOrientation'
 import { mmToSvgUnits } from './roomGeometry'
 import { STAIR_DEFAULT_WIDTH_MM, withStairWidth } from './resizeStair'
 import { stairOutline, stairRect } from './stairShape'
+import { normalizeHexColor } from '../renderer/roomFill'
 import { isLShapeLayout } from '../renderer/stairGraphics'
 
 const VALID_ROOM_TYPES = new Set<RoomType>([
@@ -565,6 +566,10 @@ function sanitizeStair(stair: Stair, index: number, useMm: boolean): Stair | nul
     else delete base[key]
   }
   if (base.corner !== 'landing') delete base.corner
+  // 塗り色は #RRGGBB だけ残す
+  const fill = typeof base.fillColor === 'string' ? normalizeHexColor(base.fillColor) : null
+  if (fill) base.fillColor = fill
+  else delete base.fillColor
   // L字・2方向に段は、外接する長方形の中の L 字（段の幅は widthMm）。長方形の幅は変えない
   if (isLShapeLayout(layout)) {
     const lPolygon = useMm ? scalePolygon(preparedPolygon) : preparedPolygon

@@ -117,7 +117,7 @@ export function StairRenderer({
       </defs>
       <path
         d={path}
-        fill={STAIR.fill}
+        fill={stair.fillColor ?? STAIR.fill}
         stroke="none"
         pointerEvents={canSelect || canDrag ? 'all' : undefined}
       />

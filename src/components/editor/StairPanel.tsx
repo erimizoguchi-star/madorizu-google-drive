@@ -1,5 +1,6 @@
 import { STAIR_LAYOUT_OPTIONS, STAIR_ORIENTATION_OPTIONS } from '../../constants/stairOptions'
-import { LABEL } from '../../renderer/styles'
+import { LABEL, STAIR } from '../../renderer/styles'
+import { normalizeHexColor } from '../../renderer/roomFill'
 import {
   effectiveStairSteps,
   effectiveStairSteps2,
@@ -193,6 +194,35 @@ export function StairPanel({ floorPlan, selected, onSelect, onChange }: StairPan
               </select>
             </div>
           )}
+
+          <div className="editor-field">
+            <label htmlFor="stair-fill-color">塗り色</label>
+            <div className="editor-color-row">
+              <input
+                id="stair-fill-color"
+                type="color"
+                value={currentStair.stair.fillColor ?? STAIR.fill}
+                onChange={(e) => handleStairField({ fillColor: e.target.value.toUpperCase() })}
+              />
+              <input
+                type="text"
+                className="editor-color-text"
+                aria-label="塗り色（#RRGGBB）"
+                value={currentStair.stair.fillColor ?? STAIR.fill}
+                onChange={(e) => {
+                  const hex = normalizeHexColor(e.target.value)
+                  if (hex) handleStairField({ fillColor: hex })
+                }}
+                placeholder="#RRGGBB"
+                spellCheck={false}
+              />
+              {currentStair.stair.fillColor != null && (
+                <button type="button" className="editor-reset-btn" onClick={() => handleStairField({ fillColor: null })}>
+                  白に戻す
+                </button>
+              )}
+            </div>
+          </div>
 
           <div className="editor-field">
             <label htmlFor="stair-layout">段の形状</label>

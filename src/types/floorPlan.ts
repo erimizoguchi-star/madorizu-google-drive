@@ -192,6 +192,8 @@ export interface Stair {
   steps2?: number
   /** L字・2方向に段の、角の作り。winder = 回り段（扇形の段）、landing = 踊り場。省略時は回り段 */
   corner?: 'winder' | 'landing'
+  /** 塗り色（#RRGGBB）。省略時は白 */
+  fillColor?: string
   /** 階段幅 mm（省略時 910） */
   widthMm?: number
   /** 表示ラベル用。省略時は direction から UP / DN を出す */

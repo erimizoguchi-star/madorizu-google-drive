@@ -10,12 +10,14 @@ import { expect, test, type Page } from '@playwright/test'
  */
 
 const BLANK_PNG = new URL('./fixtures/blank.png', import.meta.url).pathname
+/** 平面図らしい大きさ（600×400）の画像。拡大・移動を確かめるときに使う */
+const PLAN_PNG = new URL('./fixtures/plan.png', import.meta.url).pathname
 
 /** サンプルの間取図を開いて、編集タブにする */
-async function openSample(page: Page) {
+async function openSample(page: Page, image = BLANK_PNG) {
   await page.goto('/')
   await page.getByLabel('サンプル表示（解析なし）').check()
-  await page.locator('.upload-panel input[type=file]').setInputFiles(BLANK_PNG)
+  await page.locator('.upload-panel input[type=file]').setInputFiles(image)
   await page.getByRole('button', { name: 'サンプル間取図を表示' }).click()
   await expect(page.locator('svg.floor-canvas')).toHaveCount(2)
   await expect(page.getByRole('tab', { name: /② 編集/ })).toHaveAttribute('aria-selected', 'true')
@@ -127,6 +129,18 @@ test.describe('間取図の編集', () => {
     await expect.poll(async () => Number(await length.inputValue())).toBeGreaterThan(before)
   })
 
+  test('階段に色を付けられる', async ({ page }) => {
+    await openSample(page)
+    await selectElement(page, 'stair:1f:st1')
+    const fill = () => page.locator('[data-stair-id="st1"] > path').first().getAttribute('fill')
+    expect(await fill()).toBe('#FFFFFF')
+    const text = page.getByLabel('塗り色（#RRGGBB）')
+    await text.fill('#E8D9C0')
+    await expect.poll(fill).toBe('#E8D9C0')
+    await page.getByRole('button', { name: '白に戻す' }).click()
+    await expect.poll(fill).toBe('#FFFFFF')
+  })
+
   test('数 cm ずれた壁は「まとめてそろえる」で1本に戻る', async ({ page }) => {
     await openSample(page)
     await selectElement(page, 'room:1f:japanese')
@@ -138,6 +152,40 @@ test.describe('間取図の編集', () => {
     await align.click()
     await expect(align).toHaveCount(0)
     await expect(page.getByLabel('幅（mm）')).toHaveValue('2100')
+  })
+
+  test('部屋の範囲を図面の上で四角を描いて決め、足して L 字にすると辺の取っ手が出る', async ({ page }) => {
+    await openSample(page)
+    await selectElement(page, 'room:1f:japanese')
+    await page.locator('svg.floor-canvas').first().scrollIntoViewIfNeeded()
+    const room = await boxOf(page, '[data-room-id="japanese"]')
+
+    // ▭ 描き直す: 部屋の左半分だけを四角で描く
+    await page.getByRole('button', { name: '▭ 描き直す' }).click()
+    await expect(page.getByText('部屋の範囲を四角で描いてください')).toBeVisible()
+    await page.mouse.move(room.x + 2, room.y + 2)
+    await page.mouse.down()
+    await page.mouse.move(room.x + room.width * 0.5, room.y + room.height - 2, { steps: 6 })
+    await page.mouse.up()
+    await expect(page.getByText('部屋の範囲を四角で描いてください')).toHaveCount(0)
+    const width = Number(await page.getByLabel('幅（mm）').inputValue())
+    expect(width).toBeLessThan(1600)
+    expect(width).toBeGreaterThan(600)
+
+    // ＋足す: 右へ、上半分だけ足す → L 字になり、6 辺に取っ手が出る
+    const half = await boxOf(page, '[data-room-id="japanese"]')
+    await page.getByRole('button', { name: '＋足す' }).click()
+    await page.mouse.move(half.x + half.width - 4, half.y + 2)
+    await page.mouse.down()
+    await page.mouse.move(half.x + half.width * 1.6, half.y + half.height * 0.5, { steps: 6 })
+    await page.mouse.up()
+    await expect(page.locator('.stair-resize-handle')).toHaveCount(6)
+
+    // Esc で描くのをやめられる
+    await page.getByRole('button', { name: '−削る' }).click()
+    await expect(page.getByText('部屋から削る範囲を四角で描いてください', { exact: false })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByText('部屋から削る範囲を四角で描いてください', { exact: false })).toHaveCount(0)
   })
 
   test('SVG に出力すると、編集用の目印（扉の丸・取っ手）が写らない', async ({ page }) => {
@@ -153,6 +201,27 @@ test.describe('間取図の編集', () => {
     }
   })
 
+  test('アップロードした平面図は、拡大・移動しても元に戻らない', async ({ page }) => {
+    await openSample(page, PLAN_PNG)
+    const preview = page.locator('.source-preview-zoom')
+    await preview.scrollIntoViewIfNeeded()
+    const stage = preview.locator('.zoom-stage')
+    const transform = () => stage.evaluate((el) => (el as HTMLElement).style.transform)
+    // 画面の配置が落ち着くまで待つ（枠の大きさが変わったときに枠に合わせ直すのは正しい動き）
+    await page.waitForTimeout(1500)
+    const fitted = await transform()
+
+    const box = (await preview.locator('.zoom-viewport').boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.wheel(0, -300)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 5 })
+    await page.mouse.up()
+    // 拡大・移動したまま、画面の描き直し（編集時間の表示は1秒ごと）で枠に合わせた位置へ戻らない
+    await page.waitForTimeout(2500)
+    expect(await transform()).not.toBe(fitted)
+  })
+
   test('再読み込みしても「続きから編集」で戻せる', async ({ page }) => {
     await openSample(page)
     await selectElement(page, 'room:1f:japanese')
@@ -166,5 +235,37 @@ test.describe('間取図の編集', () => {
     await expect(page.locator('svg.floor-canvas')).toHaveCount(2)
     await selectElement(page, 'room:1f:japanese')
     await expect(page.getByLabel('幅（mm）')).toHaveValue('2400')
+  })
+})
+
+test.describe('使い方', () => {
+  test('初めて開くと案内が出て、使い方を順に読める。一度開くと案内は出なくなる', async ({ page }) => {
+    await page.goto('/')
+    const tip = page.getByRole('note').filter({ hasText: 'はじめて使う方へ' })
+    await expect(tip).toBeVisible()
+    await tip.getByRole('button', { name: '使い方を見る' }).click()
+
+    const dialog = page.getByRole('dialog', { name: '使い方' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('heading', { name: 'はじめに（全体の流れ）' })).toBeVisible()
+    await dialog.getByRole('button', { name: '① 読み込み →' }).click()
+    await expect(dialog.getByRole('heading', { name: '① 読み込み' })).toBeVisible()
+    await dialog.getByRole('button', { name: /元の平面図に合わせる/ }).first().click()
+    await expect(dialog).toContainText('3点で合わせる')
+
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(tip).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByText('はじめて使う方へ')).toHaveCount(0)
+    // 右上のボタンからいつでも開ける
+    await page.getByRole('button', { name: '？ 使い方' }).click()
+    await expect(page.getByRole('dialog', { name: '使い方' })).toBeVisible()
+  })
+
+  test('編集タブの「この画面の使い方」から、その画面の説明が開く', async ({ page }) => {
+    await openSample(page)
+    await page.getByRole('button', { name: /この画面の使い方（平面図に合わせる手順も）/ }).click()
+    await expect(page.getByRole('dialog', { name: '使い方' }).getByRole('heading', { name: '② 編集の基本' })).toBeVisible()
   })
 })
