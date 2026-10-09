@@ -315,6 +315,8 @@ export function updateStair(
     steps2?: number | null
     /** L字・2方向に段の角: 回り段 / 踊り場 */
     corner?: 'winder' | 'landing'
+    /** 塗り色（#RRGGBB）。null で白に戻す */
+    fillColor?: string | null
     widthMm?: number
     lengthMm?: number
     /** L字・2方向に段の、曲がったあとの長さ（mm。角を含む） */
@@ -358,6 +360,8 @@ export function updateStair(
         else if (typeof patch.steps2 === 'number' && Number.isFinite(patch.steps2)) {
           updated.steps2 = Math.min(STAIR_MAX_STEPS, Math.max(STAIR_MIN_STEPS, Math.round(patch.steps2)))
         }
+        if (patch.fillColor === null) delete updated.fillColor
+        else if (typeof patch.fillColor === 'string') updated.fillColor = patch.fillColor
         if (patch.corner === 'landing') updated.corner = 'landing'
         else if (patch.corner === 'winder') delete updated.corner
         const lShape = isLShapeLayout(updated.layout)

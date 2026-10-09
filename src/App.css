@@ -1629,7 +1629,30 @@
   width: 4.5rem;
 }
 
+/* 階段の塗り色（その場メニューの小さな色の見本） */
+.selection-toolbar__color {
+  display: inline-flex;
+  align-items: center;
+}
+
+.selection-toolbar__color input[type='color'] {
+  width: 1.9rem;
+  height: 1.6rem;
+  padding: 0.1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
 /* 部屋の範囲を四角で描く（描き直す・足す・削る） */
+/* 項目の多いメニュー（階段）は折り返して2段にする（図面の端で切れないように） */
+.selection-toolbar--wrap {
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 25rem;
+}
+
 .selection-toolbar:has(.selection-toolbar__range) {
   flex-wrap: wrap;
   justify-content: center;

@@ -103,3 +103,21 @@ describe('L字・2方向に段の階段', () => {
     expect(stair.corner).toBe('landing')
   })
 })
+
+describe('階段の塗り色', () => {
+  it('色を付けられ、白に戻せる。JSON に保存して読み込んでも残る', () => {
+    const plan = makePlan({
+      rooms: [makeRoom('ホール', rect(273, 0, 400, 182))],
+      stairs: [{ ...lStair({ layout: 'straight', polygon: rect(0, 0, 91, 182) }) }],
+    })
+    const ref = { floorId: '1f', stairId: 's' }
+    const colored = updateStair(plan, ref, { fillColor: '#E8D9C0' })
+    expect(colored.floors[0].stairs[0].fillColor).toBe('#E8D9C0')
+    expect(normalizeFloorPlan({ ...colored, coordUnits: 'svg' }).floors[0].stairs[0].fillColor).toBe('#E8D9C0')
+    expect(updateStair(colored, ref, { fillColor: null }).floors[0].stairs[0].fillColor).toBeUndefined()
+    // 色でない値は読み込まない
+    const broken = { ...colored, coordUnits: 'svg' as const }
+    broken.floors[0].stairs[0] = { ...broken.floors[0].stairs[0], fillColor: 'red; x' }
+    expect(normalizeFloorPlan(broken).floors[0].stairs[0].fillColor).toBeUndefined()
+  })
+})

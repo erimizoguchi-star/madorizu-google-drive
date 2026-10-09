@@ -30,6 +30,7 @@ import {
 import { svgUnitsToMm } from '../utils/roomGeometry'
 import { hasFourWayDirection, hasWindowDirection } from '../utils/windowOrientation'
 import { NumberField } from './NumberField'
+import { STAIR } from '../renderer/styles'
 
 type Updater = (prev: FloorPlan) => FloorPlan
 
@@ -103,7 +104,7 @@ function StairToolbar({
   const setSteps2 = (n: number) => onChange((prev) => updateStair(prev, selected, { steps2: n }))
   const landing = stair.corner === 'landing'
   return (
-    <div className="selection-toolbar" data-no-pan>
+    <div className="selection-toolbar selection-toolbar--wrap" data-no-pan>
       <select
         aria-label="階段の形"
         value={layout}
@@ -208,6 +209,16 @@ function StairToolbar({
       >
         {down ? 'DN → UP' : 'UP → DN'}
       </button>
+      <label className="selection-toolbar__color" title="階段の塗り色">
+        <input
+          type="color"
+          aria-label="階段の塗り色"
+          value={stair.fillColor ?? STAIR.fill}
+          onChange={(e) =>
+            onChange((prev) => updateStair(prev, selected, { fillColor: e.target.value.toUpperCase() }), { coalesce: true })
+          }
+        />
+      </label>
       {!down && (
         <label className="selection-toolbar__check" title="1階の描き方。破断線より先の段は破線、矢印は破断線まで">
           <input

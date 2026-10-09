@@ -129,6 +129,18 @@ test.describe('間取図の編集', () => {
     await expect.poll(async () => Number(await length.inputValue())).toBeGreaterThan(before)
   })
 
+  test('階段に色を付けられる', async ({ page }) => {
+    await openSample(page)
+    await selectElement(page, 'stair:1f:st1')
+    const fill = () => page.locator('[data-stair-id="st1"] > path').first().getAttribute('fill')
+    expect(await fill()).toBe('#FFFFFF')
+    const text = page.getByLabel('塗り色（#RRGGBB）')
+    await text.fill('#E8D9C0')
+    await expect.poll(fill).toBe('#E8D9C0')
+    await page.getByRole('button', { name: '白に戻す' }).click()
+    await expect.poll(fill).toBe('#FFFFFF')
+  })
+
   test('数 cm ずれた壁は「まとめてそろえる」で1本に戻る', async ({ page }) => {
     await openSample(page)
     await selectElement(page, 'room:1f:japanese')
