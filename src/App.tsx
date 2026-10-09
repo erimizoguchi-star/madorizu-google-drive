@@ -5,6 +5,7 @@ import { FloorArrangePanel } from './components/FloorArrangePanel'
 import { PlanChecksPanel } from './components/PlanChecksPanel'
 import { alignPlanWalls } from './utils/alignWalls'
 import { cutRoomOverlaps } from './utils/roomOverlap'
+import { applyRoomRange, moveRoomPolygonEdge, type RoomRangeMode } from './utils/roomRange'
 import { JsonDataButtons } from './components/JsonDataButtons'
 import { RoomEditor } from './components/RoomEditor'
 import { SelectionToolbar } from './components/SelectionToolbar'
@@ -196,6 +197,8 @@ function App() {
   const [wallDraftStart, setWallDraftStart] = useState<Point | null>(null)
   /** 「線を合わせる」中。壁の通りをドラッグして元の平面図に合わせる */
   const [aligning, setAligning] = useState(false)
+  /** 部屋の範囲を四角で描いている（set: 描き直す、add: 足す、cut: 削る） */
+  const [rangeDraw, setRangeDraw] = useState<{ floorId: string; roomId: string; mode: RoomRangeMode } | null>(null)
   /** 通りのドラッグを始めたときの間取図。ドラッグ中はこれに当て直す（途中で別の通りと重なっても混ざらない） */
   const gridDragBaseRef = useRef<FloorPlan | null>(null)
   /** 3点合わせで分かった、間取図を平面図に合わせるための横・縦の倍率（ずれが小さければ null） */
@@ -527,6 +530,15 @@ function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [aligning])
+
+  useEffect(() => {
+    if (!rangeDraw) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRangeDraw(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [rangeDraw])
 
   useEffect(() => {
     if (!placeKind) return
@@ -975,6 +987,22 @@ function App() {
                   }))
                 }}
                 aligning={aligning}
+                rangeDraw={editMode ? rangeDraw : null}
+                onRangeDrawn={(floorId, a, b) => {
+                  if (!rangeDraw || rangeDraw.floorId !== floorId) return
+                  const ref = { floorId, roomId: rangeDraw.roomId }
+                  const result = applyRoomRange(floorPlan, ref, a, b, rangeDraw.mode)
+                  if ('error' in result) {
+                    setError(result.error)
+                    return
+                  }
+                  setError(null)
+                  commit(result.plan)
+                  setRangeDraw(null)
+                }}
+                onRoomPolygonEdgeMove={(ref, edgeIndex, value, start) => {
+                  commit((plan) => moveRoomPolygonEdge(plan, ref, start, edgeIndex, value), { coalesce: true })
+                }}
                 onRoomDoubleClick={(ref) => {
                   handleSelect(ref)
                   setFocusNameRoomId(ref.roomId)
@@ -987,6 +1015,10 @@ function App() {
                       onChange={(updater, options) => commit(updater, options)}
                       onDelete={deleteSelection}
                       focusName={selected.kind === 'room' && selected.roomId === focusNameRoomId}
+                      onStartRange={(mode) =>
+                        selected.kind === 'room' &&
+                        setRangeDraw({ floorId: selected.floorId, roomId: selected.roomId, mode })
+                      }
                       onNameFocused={clearFocusNameRoom}
                     />
                   ) : undefined

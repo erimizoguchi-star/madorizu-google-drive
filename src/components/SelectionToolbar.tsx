@@ -42,6 +42,8 @@ interface SelectionToolbarProps {
   /** true のとき部屋名の欄にカーソルを置き、onNameFocused で知らせる（部屋をダブルクリックしたとき） */
   focusName?: boolean
   onNameFocused?: () => void
+  /** 部屋の範囲を四角で描き始める（set: 描き直す、add: 足す、cut: 削る） */
+  onStartRange?: (mode: 'set' | 'add' | 'cut') => void
 }
 
 /**
@@ -55,6 +57,7 @@ export function SelectionToolbar({
   onDelete,
   focusName,
   onNameFocused,
+  onStartRange,
 }: SelectionToolbarProps) {
   if (selected.kind === 'room') {
     return (
@@ -65,6 +68,7 @@ export function SelectionToolbar({
         onDelete={onDelete}
         focusName={focusName}
         onNameFocused={onNameFocused}
+        onStartRange={onStartRange}
       />
     )
   }
@@ -231,6 +235,7 @@ function RoomToolbar({
   onDelete,
   focusName,
   onNameFocused,
+  onStartRange,
 }: SelectionToolbarProps & { selected: Extract<SelectedElementRef, { kind: 'room' }> }) {
   const nameRef = useRef<HTMLInputElement>(null)
   // ダブルクリックされた部屋のときだけ、1回カーソルを置く。普段の選択で欄に入ると、
@@ -285,6 +290,35 @@ function RoomToolbar({
       <button type="button" className="selection-toolbar__btn is-danger" title="削除（Delete キー）" onClick={onDelete}>
         削除
       </button>
+      {onStartRange && (
+        <span className="selection-toolbar__range" title="着色する範囲を、図面の上で四角を描いて決めます">
+          <span className="selection-toolbar__range-label">範囲</span>
+          <button
+            type="button"
+            className="selection-toolbar__btn"
+            title="図面の上をドラッグして描いた四角を、この部屋の範囲にします"
+            onClick={() => onStartRange('set')}
+          >
+            ▭ 描き直す
+          </button>
+          <button
+            type="button"
+            className="selection-toolbar__btn"
+            title="描いた四角を、この部屋の範囲に足します（L 字の部屋など）"
+            onClick={() => onStartRange('add')}
+          >
+            ＋足す
+          </button>
+          <button
+            type="button"
+            className="selection-toolbar__btn"
+            title="描いた四角を、この部屋の範囲から削ります"
+            onClick={() => onStartRange('cut')}
+          >
+            −削る
+          </button>
+        </span>
+      )}
     </div>
   )
 }

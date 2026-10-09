@@ -142,6 +142,40 @@ test.describe('間取図の編集', () => {
     await expect(page.getByLabel('幅（mm）')).toHaveValue('2100')
   })
 
+  test('部屋の範囲を図面の上で四角を描いて決め、足して L 字にすると辺の取っ手が出る', async ({ page }) => {
+    await openSample(page)
+    await selectElement(page, 'room:1f:japanese')
+    await page.locator('svg.floor-canvas').first().scrollIntoViewIfNeeded()
+    const room = await boxOf(page, '[data-room-id="japanese"]')
+
+    // ▭ 描き直す: 部屋の左半分だけを四角で描く
+    await page.getByRole('button', { name: '▭ 描き直す' }).click()
+    await expect(page.getByText('部屋の範囲を四角で描いてください')).toBeVisible()
+    await page.mouse.move(room.x + 2, room.y + 2)
+    await page.mouse.down()
+    await page.mouse.move(room.x + room.width * 0.5, room.y + room.height - 2, { steps: 6 })
+    await page.mouse.up()
+    await expect(page.getByText('部屋の範囲を四角で描いてください')).toHaveCount(0)
+    const width = Number(await page.getByLabel('幅（mm）').inputValue())
+    expect(width).toBeLessThan(1600)
+    expect(width).toBeGreaterThan(600)
+
+    // ＋足す: 右へ、上半分だけ足す → L 字になり、6 辺に取っ手が出る
+    const half = await boxOf(page, '[data-room-id="japanese"]')
+    await page.getByRole('button', { name: '＋足す' }).click()
+    await page.mouse.move(half.x + half.width - 4, half.y + 2)
+    await page.mouse.down()
+    await page.mouse.move(half.x + half.width * 1.6, half.y + half.height * 0.5, { steps: 6 })
+    await page.mouse.up()
+    await expect(page.locator('.stair-resize-handle')).toHaveCount(6)
+
+    // Esc で描くのをやめられる
+    await page.getByRole('button', { name: '−削る' }).click()
+    await expect(page.getByText('部屋から削る範囲を四角で描いてください', { exact: false })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByText('部屋から削る範囲を四角で描いてください', { exact: false })).toHaveCount(0)
+  })
+
   test('SVG に出力すると、編集用の目印（扉の丸・取っ手）が写らない', async ({ page }) => {
     await openSample(page)
     await selectElement(page, 'stair:1f:st1')

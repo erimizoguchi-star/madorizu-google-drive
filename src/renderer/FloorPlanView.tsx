@@ -56,6 +56,11 @@ interface FloorPlanViewProps {
   onWindowMove?: (ref: SelectedElementRef & { kind: 'window' }, start: Point, end: Point) => void
   onFixtureMove?: (ref: SelectedElementRef & { kind: 'fixture' }, position: Point) => void
   onStairMove?: (ref: SelectedElementRef & { kind: 'stair' }, polygon: Point[]) => void
+  /** 長方形でない部屋（L 字など）の辺をドラッグして動かす */
+  onRoomPolygonEdgeMove?: (ref: SelectedElementRef & { kind: 'room' }, edgeIndex: number, value: number, start: Point[]) => void
+  /** 部屋の範囲を四角で描いている（set: 描き直す、add: 足す、cut: 削る） */
+  rangeDraw?: { floorId: string; roomId: string; mode: 'set' | 'add' | 'cut' } | null
+  onRangeDrawn?: (floorId: string, a: Point, b: Point) => void
   /** 階段の辺をドラッグして大きさを変える（value は動かした先、start はドラッグ開始時の輪郭） */
   onStairResize?: (ref: SelectedElementRef & { kind: 'stair' }, edgeIndex: number, value: number, start: Point[]) => void
   onTextMove?: (ref: SelectedElementRef & { kind: 'text' }, position: Point) => void
@@ -206,6 +211,9 @@ export function FloorPlanView({
   onFixtureResize,
   onStairMove,
   onStairResize,
+  onRoomPolygonEdgeMove,
+  rangeDraw,
+  onRangeDrawn,
   onTextMove,
   onPlaceClick,
 }: FloorPlanViewProps) {
@@ -213,7 +221,7 @@ export function FloorPlanView({
   const calibrating = !!overlay?.enabled && overlay.calibrating
   const adjustingOverlay = (!!overlay?.enabled && overlay.adjusting) || calibrating
   // 配置中・平面図の位置合わせ中・線を合わせる中は、部屋などの選択や編集を止める
-  const locked = placing || adjustingOverlay || !!aligning
+  const locked = placing || adjustingOverlay || !!aligning || !!rangeDraw
   const floorsRef = useRef<HTMLDivElement | null>(null)
   // 階の並べ方。ドラッグ中は位置合わせの余白を固定する（変わると掴んでいる要素が指から離れる）。
   // FloorCanvas の描画範囲と同じく、ドラッグを始めた時点の値を覚え、離したら合わせ直す
@@ -503,6 +511,15 @@ export function FloorPlanView({
       <h2 className="floor-plan-title">{floorPlan.title}</h2>
       {placing ? (
         <p className="edit-mode-hint place-mode-hint">{placeHint(placeKind)}</p>
+      ) : rangeDraw ? (
+        <p className="edit-mode-hint place-mode-hint">
+          {rangeDraw.mode === 'set'
+            ? '図面の上をドラッグして、部屋の範囲を四角で描いてください。'
+            : rangeDraw.mode === 'add'
+              ? '図面の上をドラッグして、部屋に足す範囲を四角で描いてください（今の範囲に重なるか接するように）。'
+              : '図面の上をドラッグして、部屋から削る範囲を四角で描いてください（端から削るように）。'}
+          角はほかの部屋の辺に吸い付きます。Esc でやめます。
+        </p>
       ) : aligning ? (
         <p className="edit-mode-hint place-mode-hint">
           オレンジの線（壁の通り）をドラッグして、重ねた平面図の壁に合わせてください。
@@ -642,6 +659,14 @@ export function FloorPlanView({
               onStairSelect={
                 !locked && onSelect
                   ? (stairId) => onSelect({ kind: 'stair', floorId: floor.id, stairId })
+                  : undefined
+              }
+              rangeDraw={rangeDraw?.floorId === floor.id ? rangeDraw : null}
+              onRangeDrawn={onRangeDrawn ? (a, b) => onRangeDrawn(floor.id, a, b) : undefined}
+              onRoomPolygonEdgeMove={
+                onRoomPolygonEdgeMove && editable && !locked
+                  ? (roomId, edgeIndex, value, start) =>
+                      onRoomPolygonEdgeMove({ kind: 'room', floorId: floor.id, roomId }, edgeIndex, value, start)
                   : undefined
               }
               onStairResize={

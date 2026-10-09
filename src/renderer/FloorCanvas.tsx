@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
+import { useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import type { Fixture, Floor } from '../types/floorPlan'
 import type { Point } from '../types/floorPlan'
 import type { LabelLineKind } from './roomLabelLayout'
@@ -25,9 +25,17 @@ import { GridLinesLayer, type GridLineDragHandler } from './GridLinesLayer'
 import { SelectionToolbarAnchor } from './SelectionToolbarAnchor'
 import type { FixtureCorner } from '../utils/floorPlanDrag'
 import { parseAxisAlignedRect, type RectEdge } from '../utils/roomGeometry'
-import { clientToSvg, canvasToFloor, isSvgDragging, subscribeSvgDrag } from './svgCoords'
+import { attachSvgPointerDrag, clientToSvg, canvasToFloor, isSvgDragging, subscribeSvgDrag } from './svgCoords'
 import { useZoom } from '../components/zoomContext'
 import { EDGE_SNAP_MAX, otherEdgeValues, snapPolygonToEdges, snapToNearest } from '../utils/alignWalls'
+
+/** 縦横の辺だけでできた形か */
+function isOrthogonal(polygon: Point[]): boolean {
+  return polygon.every((p, i) => {
+    const q = polygon[(i + 1) % polygon.length]
+    return Math.abs(p.x - q.x) < 0.05 || Math.abs(p.y - q.y) < 0.05
+  })
+}
 
 /** 部屋の辺がほかの部屋の辺へ吸い付く距離（画面上の px） */
 const EDGE_SNAP_PX = 8
@@ -48,6 +56,14 @@ interface FloorCanvasProps {
   onStairSelect?: (stairId: string) => void
   onStairMove?: (stairId: string, polygonFloor: Point[]) => void
   onStairResize?: (stairId: string, edgeIndex: number, value: number, start: Point[]) => void
+  /** 長方形でない部屋（L 字など）の辺を動かす */
+  onRoomPolygonEdgeMove?: (roomId: string, edgeIndex: number, value: number, start: Point[]) => void
+  /**
+   * 部屋の範囲を四角で描く（set: 描き直す、add: 足す、cut: 削る）。roomId の部屋が対象。
+   * 描き終えると onRangeDrawn に四角の2つの角（フロア座標）を渡す
+   */
+  rangeDraw?: { roomId: string; mode: 'set' | 'add' | 'cut' } | null
+  onRangeDrawn?: (a: Point, b: Point) => void
   onWallSelect?: (wallId: string) => void
   onDoorSelect?: (doorId: string) => void
   onWindowSelect?: (windowId: string) => void
@@ -96,6 +112,9 @@ export function FloorCanvas({
   onStairSelect,
   onStairMove,
   onStairResize,
+  onRoomPolygonEdgeMove,
+  rangeDraw,
+  onRangeDrawn,
   onWallSelect,
   onDoorSelect,
   onWindowSelect,
@@ -142,6 +161,16 @@ export function FloorCanvas({
   // 数 cm のすき間・重なりができると、両方の部屋の辺に壁ができて2重（太い壁）に見えるため
   const zoom = useZoom()
   const edgeSnap = Math.min(EDGE_SNAP_MAX, EDGE_SNAP_PX / zoom)
+  /** 部屋の範囲を描いている途中の四角（フロア座標） */
+  const [rangeDraft, setRangeDraft] = useState<{ a: Point; b: Point } | null>(null)
+  /** 範囲の角を、ほかの部屋・階段の辺に吸い付かせる（描いている部屋自身の辺は除く） */
+  const snapRangePoint = (p: Point): Point => {
+    if (!rangeDraw) return p
+    return {
+      x: snapToNearest(p.x, otherEdgeValues(floor, 'x', rangeDraw.roomId), edgeSnap),
+      y: snapToNearest(p.y, otherEdgeValues(floor, 'y', rangeDraw.roomId), edgeSnap),
+    }
+  }
 
   const selectedRoom =
     selectedRoomId != null ? floor.rooms.find((r) => r.id === selectedRoomId) : undefined
@@ -508,6 +537,68 @@ export function FloorCanvas({
                 }
               />
             </g>
+          )}
+          {editable && selectedRoomId && onRoomPolygonEdgeMove && !selectedRoomRect && (() => {
+            // 長方形でない部屋（L 字など）は、辺ごとの取っ手で動かす
+            const room = transformedFloor.rooms.find((r) => r.id === selectedRoomId)
+            if (!room || room.polygon.length < 4 || !isOrthogonal(room.polygon)) return null
+            return (
+              <g className="resize-handles-layer">
+                <StairResizeHandles
+                  polygon={room.polygon}
+                  floorOffset={floorOffset}
+                  onResize={(edgeIndex, value, start) => {
+                    const axis = isHorizontalStairEdge(start, edgeIndex) ? 'y' : 'x'
+                    const others = otherEdgeValues(floor, axis, selectedRoomId)
+                    onRoomPolygonEdgeMove(selectedRoomId, edgeIndex, snapToNearest(value, others, edgeSnap), start)
+                  }}
+                />
+              </g>
+            )
+          })()}
+          {rangeDraw && onRangeDrawn && (
+            <rect
+              className="range-overlay"
+              data-no-pan=""
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              fill="transparent"
+              style={{ cursor: 'crosshair', pointerEvents: 'all' }}
+              onPointerDown={(e) => {
+                if (e.button !== 0) return
+                const svg = e.currentTarget.ownerSVGElement
+                if (!svg) return
+                const canvas = clientToSvg(svg, e.clientX, e.clientY)
+                if (!canvas) return
+                const a = snapRangePoint(canvasToFloor(canvas, floorOffset))
+                let b = a
+                setRangeDraft({ a, b })
+                attachSvgPointerDrag(
+                  e,
+                  svg,
+                  (pos) => {
+                    b = snapRangePoint(canvasToFloor(pos, floorOffset))
+                    setRangeDraft({ a, b })
+                  },
+                  () => {
+                    setRangeDraft(null)
+                    onRangeDrawn(a, b)
+                  }
+                )
+              }}
+            />
+          )}
+          {rangeDraw && rangeDraft && (
+            <rect
+              className={`range-draft range-draft--${rangeDraw.mode}`}
+              pointerEvents="none"
+              x={Math.min(rangeDraft.a.x, rangeDraft.b.x) + offsetX}
+              y={Math.min(rangeDraft.a.y, rangeDraft.b.y) + offsetY}
+              width={Math.abs(rangeDraft.b.x - rangeDraft.a.x)}
+              height={Math.abs(rangeDraft.b.y - rangeDraft.a.y)}
+            />
           )}
           {placeMode && onPlaceClick && (
             <rect

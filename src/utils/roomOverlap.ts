@@ -60,6 +60,21 @@ function simplify(points: Point[]): Point[] {
  * 重なりがなければ a のまま。取り除くと2つに分かれる・穴があく（b が a の内側にある）ときは null
  */
 export function subtractOrthogonal(a: Point[], b: Point[]): Point[] | null {
+  return combineOrthogonal(a, b, 'subtract')
+}
+
+/**
+ * a と b を合わせた形。重なっていても接しているだけでもよい。離れていて1つの形にならないとき・穴があくときは null
+ */
+export function unionOrthogonal(a: Point[], b: Point[]): Point[] | null {
+  return combineOrthogonal(a, b, 'union')
+}
+
+/**
+ * 両方の頂点の座標で区切った格子の区画ごとに、残すかどうかを決めて外周をたどる。
+ * subtract: a の中で b の外、union: a か b の中
+ */
+function combineOrthogonal(a: Point[], b: Point[], op: 'subtract' | 'union'): Point[] | null {
   const xs = uniqueSorted([...a, ...b].map((p) => p.x))
   const ys = uniqueSorted([...a, ...b].map((p) => p.y))
   const cols = xs.length - 1
@@ -72,11 +87,15 @@ export function subtractOrthogonal(a: Point[], b: Point[]): Point[] | null {
       const c = { x: (xs[i] + xs[i + 1]) / 2, y: (ys[j] + ys[j + 1]) / 2 }
       const inA = pointInPolygon(c, a)
       const inB = pointInPolygon(c, b)
-      if (inA && inB) removed = true
-      keep[i].push(inA && !inB)
+      if (op === 'subtract') {
+        if (inA && inB) removed = true
+        keep[i].push(inA && !inB)
+      } else {
+        keep[i].push(inA || inB)
+      }
     }
   }
-  if (!removed) return a
+  if (op === 'subtract' && !removed) return a
   const kept = (i: number, j: number) => i >= 0 && j >= 0 && i < cols && j < rows && keep[i][j]
 
   // 残る部分がひとつながりか（2つに分かれるなら扱わない）

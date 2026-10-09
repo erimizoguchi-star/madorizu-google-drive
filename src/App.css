@@ -1629,6 +1629,46 @@
   width: 4.5rem;
 }
 
+/* 部屋の範囲を四角で描く（描き直す・足す・削る） */
+.selection-toolbar:has(.selection-toolbar__range) {
+  flex-wrap: wrap;
+  justify-content: center;
+  /* 幅を決めておく（図面の右端の近くでは使える幅が狭まり、3段以上に折り返して上が切れていた） */
+  width: 27rem;
+}
+
+/* 範囲のボタンは2段目に並べる（メニューが横に長くなり、図面の端で切れないように） */
+.selection-toolbar__range {
+  display: inline-flex;
+  flex-basis: 100%;
+  justify-content: center;
+  align-items: center;
+  gap: 0.2rem;
+  white-space: nowrap;
+}
+
+.selection-toolbar__range-label {
+  color: var(--color-text-muted);
+  margin-right: 0.15rem;
+}
+
+.range-draft {
+  fill: rgba(192, 138, 62, 0.15);
+  stroke: #C08A3E;
+  stroke-width: calc(1.5px / var(--zoom, 1));
+  stroke-dasharray: calc(6px / var(--zoom, 1)) calc(4px / var(--zoom, 1));
+}
+
+.range-draft--add {
+  fill: rgba(46, 139, 87, 0.15);
+  stroke: #2E8B57;
+}
+
+.range-draft--cut {
+  fill: rgba(139, 90, 82, 0.15);
+  stroke: #8B5A52;
+}
+
 .selection-toolbar__steps {
   display: inline-flex;
   align-items: center;
